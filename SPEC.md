@@ -1,8 +1,8 @@
 # Open Hazard Log — v1 build spec
 
 **Status:** draft for review · 16 Nov 2026 · cut down from the OHL product spec v0.1
-**Owner:** Dr Akanimoh Osutuk (Bytes Medical Ltd / Open Nucleus)
-**Name:** "Open Hazard Log (OHL)" is a placeholder.
+**Owner:** Dr Akanimoh Osutuk (Bioterafi)
+**Name:** Open Hazard Log by Bioterafi. **Licence:** Apache-2.0. **Landing page:** https://hazardlog.bioterafi.xyz
 
 ---
 
@@ -365,7 +365,7 @@ tests/
 2. **Blind rating on by default?** Recommended yes (answers open question 3 of the original spec).
 3. **Pilot product:** Petrios or the ENABLE-AI reporting tool?
 4. **Where the pilot runs:** a single laptop/VM is enough for v1.
-5. **Licence** (Apache-2.0 vs AGPL) and **name** — don't block v1.
+5. ~~Licence and name~~: decided 16 Nov 2026. Apache-2.0; "Open Hazard Log by Bioterafi".
 6. **Revised DCB0129/0160:** build against the 2018 versions now, with the config seams in §3.1. Re-check when NHS England publishes the consultation response.
 
 ---

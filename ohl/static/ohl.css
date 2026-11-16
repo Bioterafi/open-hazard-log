@@ -255,3 +255,4 @@ details.bulk[open] > summary::before { content: "▾ "; }
 .choices { margin: 0; padding-left: 18px; font-size: 14px; color: var(--ink-2); }
 .choices li + li { margin-top: 6px; }
 .add .tag, .add .path { text-indent: 0; }
+.brand .by { font-weight: 400; color: var(--faint); font-size: 13px; margin-left: 4px; }

@@ -1,8 +1,12 @@
 [project]
 name = "ohl"
 version = "0.1.0"
-description = "Open Hazard Log: a DCB0129/DCB0160 hazard log where agents propose and the Clinical Safety Officer decides."
+description = "Open Hazard Log by Bioterafi: a DCB0129/DCB0160 hazard log where agents propose and the Clinical Safety Officer decides."
 requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Bioterafi" }]
+
 dependencies = [
   "fastapi>=0.115",
   "uvicorn>=0.30",
@@ -12,6 +16,9 @@ dependencies = [
   "openpyxl>=3.1",
   "anthropic>=1",
 ]
+
+[project.urls]
+Homepage = "https://hazardlog.bioterafi.xyz"
 
 [project.scripts]
 ohl = "ohl.cli:main"

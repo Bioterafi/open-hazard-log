@@ -1,6 +1,7 @@
-# Open Hazard Log
+# Open Hazard Log by Bioterafi
 
 A DCB0129/DCB0160 hazard log where agents propose and the Clinical Safety Officer decides.
+Open source under the Apache-2.0 licence. Website: https://hazardlog.bioterafi.xyz
 The spec is in [SPEC.md](SPEC.md). Built so far: **M1** (the log), **M2** (agent scan and review) and **M3** (evidence and code-change checks).
 
 ## What M1 does
@@ -74,6 +75,14 @@ Other commands: `ohl seed-self` (OHL's own hazard log, unrated), `ohl export`, `
 python3 -m http.server 8767 --directory site     # then open http://127.0.0.1:8767
 ```
 
+It's live at https://hazardlog.bioterafi.xyz. Cloudflare serves `site/` as static files from a Worker with no code, configured in `wrangler.jsonc`, and `site/_headers` sets the security headers. To publish a change, run:
+
+```bash
+wrangler deploy
+```
+
+Only the landing page is deployed. The app is never deployed: it has no login and is meant to run on your own computer.
+
 ## Tests
 
 ```bash
@@ -101,3 +110,24 @@ seed/             OHL's own hazards; a made-up sample log, demo docs and a saved
 ```
 
 The look follows anthropic.com's design scheme: ivory page, serif titles, rounded panels and pill buttons (style only, no Anthropic marks). Newsreader and Hanken Grotesk load from Google Fonts; where that's blocked, pages fall back to Georgia and the system sans.
+
+## Safety and scope
+
+- **It supports clinical risk management; it isn't it.** Your Clinical Risk Management System, Plan and Safety Case Report remain your organisation's responsibility. A named, registered Clinical Safety Officer makes every decision in the log.
+- **It doesn't make a product compliant**, and it isn't affiliated with or endorsed by NHS England.
+- **The agent scan supplements a hazard workshop.** It never replaces one.
+- **No login.** Run it on your own computer only. `ohl serve` refuses to listen anywhere else. Shared or hosted use needs real sign-in first.
+- **No patient data.** Scans read docs and code only, after the CSO confirms the sources contain no patient-identifiable data.
+- Open Hazard Log keeps its own hazard log (`ohl seed-self`). Report safety concerns about the tool itself as issues marked "safety".
+
+## Contributing
+
+Issues and pull requests are welcome.
+
+- Run `uv run pytest` before sending a change. The suite never calls the Anthropic API.
+- Some tests guard safety properties: the scan and checks have no write path to the log, every quote is checked, ratings are blind, and the audit chain catches tampering. Don't weaken them to make a change pass.
+- Prompt changes get a new file and version (`prompts/scan_v2.md`), never an edit in place.
+
+## Licence
+
+Copyright 2026 Bioterafi. Licensed under the Apache License, Version 2.0: see [LICENSE](LICENSE) and [NOTICE](NOTICE).

@@ -1,0 +1,9 @@
+// The public landing page (site/), served by Cloudflare as static assets. No code runs.
+// The app itself is never deployed: it has no login and only listens on your own computer.
+{
+  "name": "open-hazard-log",
+  "compatibility_date": "2026-11-01",
+  "assets": { "directory": "./site" },
+  "workers_dev": true,
+  "routes": [{ "pattern": "hazardlog.bioterafi.xyz", "custom_domain": true }]
+}
