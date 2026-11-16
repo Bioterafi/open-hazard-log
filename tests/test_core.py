@@ -180,3 +180,12 @@ def test_causes_text_round_trip():
     causes = S.parse_causes(text)
     assert causes[1]["category"] == "human-factors" and causes[0]["paths"] == ["src/a.ts", "src/b.ts"]
     assert S.parse_causes(S.format_causes(causes)) == causes
+
+
+@pytest.mark.parametrize("host", ["0.0.0.0", "192.168.1.20", "example.org"])
+def test_serve_refuses_anything_but_this_computer(tmp_path, host):
+    """No login, so the app must only listen on loopback (landing page guardrail)."""
+    from ohl import cli
+    with pytest.raises(SystemExit) as e:
+        cli.main(["--db", str(tmp_path / "x.db"), "serve", "--host", host])
+    assert "only listens on this computer" in str(e.value)

@@ -256,7 +256,7 @@ Three pages. Nothing else.
 
 | Page | Shows |
 |---|---|
-| **Log** | System name; freshness line (working draft vs last issued version, last scan, last checks, proposals waiting, audit chain intact); one table: ID, hazard, risk (initial → residual), controls/evidence state, review due. Buttons: Add hazard, Export, Issue version. |
+| **Dashboard** | The system's home page (16 Nov 2026, at the owner's request). From the top: the freshness line; six headline tiles (hazards, not yet rated, residual risk 3+, controls verified with a meter, proposals waiting, reviews overdue); the risk panel (initial and residual 5×5 matrices with hazard counts, cells link to a filtered log, plus residual-risk bars 5 → 1 and not rated); Needs attention (only problems that exist, with hazard IDs) beside Recent activity; then the hazard log table with filter pills. Buttons: Add hazard, Import, Export, Issue version. |
 | **Review** | Pending proposals as a list; selected one opens below as two columns: proposal (as a diff) + rating + actions on the left, reasoning, assumptions and quoted sources on the right. |
 | **Hazard** | All fields, controls with each evidence item's state and last check, and the event history. Edit button (CSO only). |
 
@@ -272,13 +272,14 @@ Settings (system details, sources, users, risk matrix) is a plain form page link
 | `--ink` / `--ink-2` | `#141413` / `#3d3d3a` | text and primary button / button text |
 | `--faint` | `#5e5d59` | secondary text |
 | `--clay` | `#d97757` | focus ring and the "+" on proposed text only |
-| `--r1`…`--r5` | olive → oat → clay → coral → fig tints | risk pill backgrounds |
+| `--r1`…`--r5` | `#e3957a` `#d27052` `#b9573a` `#954027` `#682a17` | risk 1–5, one clay hue light → dark |
 
-- **Type:** page titles in Source Serif 4 (weight 400, slightly tight letter spacing), everything else in DM Sans, file paths in the system monospace. Both fonts are free stand-ins for anthropic.com's own typefaces and load from Google Fonts. Where that's blocked, the fallbacks are Georgia and the system sans. Bundling them locally is still to do.
+- **Type:** page titles in Newsreader (weight 400, slightly tight letter spacing), everything else in Hanken Grotesk, file paths in the system monospace. Chosen side by side against DM Sans, Inter, Instrument Sans, Geist, Source Serif 4 and Literata. Both fonts are free stand-ins for anthropic.com's own typefaces and load from Google Fonts. Where that's blocked, the fallbacks are Georgia and the system sans. Bundling them locally is still to do.
 - **Shapes:** 16px-radius panels with no borders, hairline rows inside, pill-shaped buttons and tags, and one dark pill for the main action on each screen.
 - **Risk:** a tinted pill that always shows the number. The Hazard and Review pages add the word, e.g. `3 undesirable`. The log column reads initial → residual, with the meaning in the legend and on hover. Colour is never the only signal.
 - **Problems** (evidence missing, overdue, quote not found) get a soft clay-tinted tag. No red.
-- **Restraint:** no charts, no animation, no icons beyond `↳` and `→`. Works at phone width; tables scroll sideways inside their panel.
+- **Charts** follow the dataviz rules: risk 1–5 is ordinal, so it uses one clay hue stepping light to dark (`#e3957a → #682a17`). The validator passes it: lightness is monotone, gaps are ≥ 0.06, and the light end is 2.15:1 on the panel. Labels inside a fill are near-black on step 1 and white on steps 2–5, chosen by APCA. Only cells holding hazards are coloured. Every number also appears as text, and the hazard table is the table view of the matrix.
+- **Restraint:** no animation, no icons beyond `↳` and `→`. Works at phone width (checked at 375px); tables scroll sideways inside their panel.
 
 ---
 

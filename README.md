@@ -50,6 +50,14 @@ uv run ohl scan --system 1 --as you@trust.nhs.uk
 
 Other commands: `ohl seed-self` (OHL's own hazard log, unrated), `ohl export`, `ohl audit`, `ohl verify [--file audit.json]`.
 
+## Landing page
+
+`site/index.html` is a static product page in the same style. It's self-contained, so it can be hosted anywhere:
+
+```bash
+python3 -m http.server 8767 --directory site     # then open http://127.0.0.1:8767
+```
+
 ## Tests
 
 ```bash
@@ -74,4 +82,4 @@ config/risk_matrix.toml   default scheme (DCB0129 guidance Tables 7-10, an examp
 seed/             OHL's own hazards; a made-up sample log, demo docs and a saved scan output
 ```
 
-The look follows anthropic.com's design scheme: ivory page, serif titles, rounded panels and pill buttons (style only, no Anthropic marks). Source Serif 4 and DM Sans load from Google Fonts; where that's blocked, pages fall back to Georgia and the system sans.
+The look follows anthropic.com's design scheme: ivory page, serif titles, rounded panels and pill buttons (style only, no Anthropic marks). Newsreader and Hanken Grotesk load from Google Fonts; where that's blocked, pages fall back to Georgia and the system sans.

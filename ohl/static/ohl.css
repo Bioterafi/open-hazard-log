@@ -1,6 +1,6 @@
 /* Open Hazard Log — warm ivory, serif titles, sans text, pill buttons.
    Palette and proportions follow anthropic.com's public design (style only: no logos, names or brand fonts).
-   Source Serif 4 and DM Sans are free stand-ins for that site's own typefaces. */
+   Newsreader and Hanken Grotesk are free stand-ins for that site's own typefaces. */
 
 :root {
   color-scheme: light;
@@ -15,18 +15,20 @@
   --clay: #d97757;        /* accent: focus, active tab */
   --clay-ink: #c6613f;
   --warn-bg: #f6e1d7;     /* problems: missing evidence, overdue, quote not found */
-  --r1: #dfe6d6; --r2: #e3dacc; --r3: #f2dccb; --r4: #efc9bb; --r5: #e2b4c3;  /* risk pill tints */
-  --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
-  --sans: "DM Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Risk 1-5: one clay hue, light to dark (ordinal ramp, validated: monotone, gaps >= 0.06 L,
+     light end 2.15:1 on panel). Labels inside: near-black on 1, white on 2-5 (APCA). */
+  --r1: #e3957a; --r2: #d27052; --r3: #b9573a; --r4: #954027; --r5: #682a17;
+  --serif: "Newsreader", Georgia, "Times New Roman", serif;
+  --sans: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
   --paper: var(--page);   /* older templates use these names */
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 15.5px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
 h1, h2, h3 { margin: 0; color: var(--ink); }
-h1 { font: 400 32px/1.25 var(--serif); letter-spacing: -0.01em; }
-h2 { font: 400 22px/1.3 var(--serif); letter-spacing: -0.005em; }
+h1 { font: 400 36px/1.2 var(--serif); letter-spacing: -0.015em; }
+h2 { font: 400 24px/1.3 var(--serif); letter-spacing: -0.01em; }
 h3 { font: 600 15px/1.4 var(--sans); }
 a { color: inherit; text-underline-offset: 3px; text-decoration-color: var(--line-2); }
 a:hover { text-decoration-color: currentColor; }
@@ -106,8 +108,9 @@ td.id { font-variant-numeric: tabular-nums; color: var(--faint); white-space: no
 .risk, .pill { display: inline-flex; align-items: center; gap: 6px; padding: 1px 10px; border-radius: 999px; font-size: 13px;
   white-space: nowrap; background: var(--panel-2); color: var(--ink); font-variant-numeric: tabular-nums; }
 .risk b { font-weight: 600; }
-.risk.r1 { background: var(--r1); } .risk.r2 { background: var(--r2); } .risk.r3 { background: var(--r3); }
-.risk.r4 { background: var(--r4); } .risk.r5 { background: var(--r5); }
+.r1, .c1 { background: var(--r1); color: var(--ink); }
+.r2, .c2 { background: var(--r2); color: #fff; } .r3, .c3 { background: var(--r3); color: #fff; }
+.r4, .c4 { background: var(--r4); color: #fff; } .r5, .c5 { background: var(--r5); color: #fff; }
 .arrow { color: var(--faint); margin: 0 6px; font-size: 13px; }
 .tag { display: inline-block; font-size: 12px; padding: 1px 9px; border-radius: 999px; background: var(--panel-2);
   color: var(--faint); white-space: nowrap; vertical-align: 1px; }
@@ -171,3 +174,72 @@ blockquote { margin: 6px 0 0; padding: 2px 0 2px 14px; border-left: 2px solid va
 .cite:last-child { margin-bottom: 0; }
 .path { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); }
 .decide { display: flex; gap: 8px; flex-wrap: wrap; padding: 16px 24px 22px; border-top: 1px solid var(--line-2); align-items: flex-start; }
+
+/* ---- dashboard ---- */
+.eyebrow { font-size: 13px; color: var(--faint); margin: 0 0 4px; }
+.tiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 16px; }
+@media (max-width: 1000px) { .tiles { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 560px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+.tile { background: var(--panel); border-radius: 16px; padding: 16px 18px 18px; display: flex; flex-direction: column;
+  gap: 2px; text-decoration: none; min-width: 0; }
+a.tile:hover { background: var(--panel-2); }
+.tile .l { font-size: 13px; color: var(--faint); }
+.tile .v { font: 600 34px/1.15 var(--sans); letter-spacing: -0.02em; margin-top: 6px; }
+.tile .v .of { font-size: 15px; font-weight: 500; color: var(--faint); letter-spacing: 0; }
+.tile .s { font-size: 12.5px; color: var(--faint); }
+.meter { display: block; height: 6px; border-radius: 999px; background: var(--line-2); margin-top: 10px; overflow: hidden; }
+.meter > span { display: block; height: 100%; border-radius: 999px; background: var(--ink); }
+
+.grid2 { display: grid; grid-template-columns: 1.35fr 1fr; gap: 16px; margin-bottom: 16px; align-items: stretch; }
+.grid2 > .box + .box { margin-top: 0; }
+@media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+
+.matrices { display: flex; gap: 32px; flex-wrap: wrap; align-items: flex-start; }
+.riskpanel { margin-bottom: 16px; }
+.breakdown { flex: 1 1 260px; min-width: 240px; }
+.breakdown .cap { font-size: 14px; font-weight: 500; margin: 0 0 8px; }
+.rm { margin: 0; }
+.rm figcaption { font-size: 14px; font-weight: 500; margin-bottom: 8px; }
+.rm table { border-collapse: separate; border-spacing: 2px; width: auto; table-layout: fixed; }
+.rm th, .rm td { padding: 0; border: 0; font-size: 11.5px; color: var(--faint); font-weight: 400; }
+.rm tbody th { text-align: right; padding-right: 8px; white-space: nowrap; }
+.rm tfoot th { padding-top: 6px; width: 48px; max-width: 48px; text-align: center; white-space: normal; line-height: 1.15; vertical-align: top;
+  font-size: 10.5px; hyphens: manual; -webkit-hyphens: manual; }
+.rm tfoot th:first-child { width: auto; max-width: none; }
+.rm .cell { display: block; width: 48px; height: 32px; line-height: 32px; text-align: center; border-radius: 6px;
+  font-size: 14px; font-weight: 600; text-decoration: none; font-variant-numeric: tabular-nums; }
+.rm a.cell:hover, .rm a.cell:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+.rm .c0 { background: var(--panel-2); }
+.axes { margin: 12px 0 8px; }
+.scale { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--faint); }
+.scale span { display: inline-flex; align-items: center; gap: 6px; }
+.scale i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+.attn { list-style: none; margin: 0; padding: 0; }
+.attn li { display: flex; gap: 12px; align-items: baseline; padding: 10px 0; border-top: 1px solid var(--line-2); font-size: 14px; }
+.attn li:first-child { border-top: 0; padding-top: 0; }
+.attn .n { min-width: 28px; text-align: center; font-weight: 600; background: var(--warn-bg); border-radius: 999px; padding: 0 8px;
+  font-variant-numeric: tabular-nums; }
+.attn .refs { display: block; font-size: 12.5px; color: var(--faint); margin-top: 2px; }
+.attn .refs a { color: var(--faint); }
+
+.mlist { list-style: none; margin: 0; padding: 0; }
+.mlist li { display: grid; grid-template-columns: 170px 1fr 28px; gap: 12px; align-items: center; padding: 5px 0; font-size: 14px; }
+@media (max-width: 520px) { .mlist li { grid-template-columns: 1fr 32px; } .mlist .track { grid-column: 1 / -1; grid-row: 2; } }
+.mlist .track { height: 8px; border-radius: 999px; background: var(--panel-2); overflow: hidden; }
+.mlist .fill { display: block; height: 100%; border-radius: 999px; }
+.mlist .fill.c0 { background: var(--line-2); }
+.mlist .count { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+
+.feed { list-style: none; margin: 0; padding: 0; font-size: 14px; }
+.feed li { display: grid; grid-template-columns: 92px 1fr; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line-2); }
+.feed li:first-child { border-top: 0; padding-top: 0; }
+.feed .when { color: var(--faint); font-size: 13px; font-variant-numeric: tabular-nums; }
+.feed b { font-weight: 500; }
+
+.logsec { margin-top: 36px; scroll-margin-top: 16px; }
+.loghead { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+.chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.chips a { font-size: 13px; text-decoration: none; padding: 5px 12px; border-radius: 999px; color: var(--faint); border: 1px solid var(--line); }
+.chips a:hover { color: var(--ink); background: var(--panel); }
+.chips a.on { background: var(--ink); color: var(--page); border-color: var(--ink); }

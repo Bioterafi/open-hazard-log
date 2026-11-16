@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import audit, db, export, importer, proposals, risk, scan
+from . import audit, dashboard, db, export, importer, proposals, risk, scan
 from . import service as S
 
 HERE = Path(__file__).resolve().parent
@@ -107,6 +107,13 @@ def names(c) -> dict:
 
 
 def describe(e: dict) -> str:
+    if e["action"] in ("scan_run", "check_run"):
+        a = json.loads(e["after"])
+        n, hidden = len(a.get("proposals", [])), a.get("hidden_no_verified_quote", 0)
+        what = "scan" if e["action"] == "scan_run" else "checks"
+        return (f"{what} found {n} proposal{'s' if n != 1 else ''}"
+                + (f", {hidden} hidden (no verified quote)" if hidden else "")
+                + (" (replayed saved output)" if str(a.get("model_used", "")).startswith("replay:") else ""))
     if e["action"] == "log_imported":
         a = json.loads(e["after"])
         return f"imported {len(a['hazards'])} hazards and {len(a['controls'])} controls from {a['file']}"
@@ -118,7 +125,11 @@ def describe(e: dict) -> str:
 def summarise(c, evs: list[dict]) -> list[dict]:
     """Newest first, with each import shown as one line instead of one per row."""
     who = names(c)
-    out = [dict(e, who=who.get(e["actor"], e["actor"]), what=describe(e)) for e in evs
+    def name(actor: str) -> str:
+        if actor.startswith("agent:"):
+            return "Agent"
+        return who.get(actor, actor)
+    out = [dict(e, who=name(e["actor"]), what=describe(e)) for e in evs
            if not e["note"].startswith("imported from ")]
     return list(reversed(out))
 
@@ -201,18 +212,20 @@ async def settings_save(request: Request, sid: int):
 # ---------------------------------------------------------------- log
 
 @app.get("/s/{sid}", response_class=HTMLResponse)
-def log(request: Request, sid: int):
+def log(request: Request, sid: int, f: str = "", stage: str = "", sev: str = "", lik: str = ""):
     c = conn()
     u = current_user(request, c)
+    ctx = log_context(c, sid)
     hazards = S.list_hazards(c, sid)
     controls = S.list_controls(c, sid)
-    for h in hazards:
-        mine = [x for x in controls if h["ref"] in x["hazard_refs"]]
-        h["n_controls"] = len(mine)
-        h["n_verified"] = sum(x["status"] == "verified" for x in mine)
-        h["n_invalid"] = sum(x["status"] == "invalid" for x in mine)
-        h["overdue"] = bool(h["review_due"]) and h["review_due"] < db.today() and h["status"] != "closed"
-    return page(request, "log.html", user=u, hazards=hazards, **log_context(c, sid))
+    dashboard.annotate(hazards, controls, db.today())
+    scheme = ctx["scheme"]
+    st = dashboard.stats(scheme, hazards, controls, pending=ctx["pending"], changes=ctx["changes"])
+    shown, filter_label = dashboard.apply_filter(hazards, f, stage, sev, lik)
+    activity = summarise(c, audit.events(c, sid))[:8]
+    return page(request, "dashboard.html", user=u, hazards=shown, all_count=len(hazards), st=st,
+                matrices=[dashboard.matrix(scheme, hazards, "initial"), dashboard.matrix(scheme, hazards, "residual")],
+                filters=dashboard.FILTERS, f=f, filter_label=filter_label, activity=activity, **ctx)
 
 
 # ---------------------------------------------------------------- scan (runs in a background thread)
