@@ -37,6 +37,9 @@ header { padding: 32px 0 0; }
 
 h1 { font: 400 clamp(38px, 6vw, 56px)/1.08 var(--serif); letter-spacing: -0.022em; margin: 112px 0 28px; }
 .lede { font-size: 20px; line-height: 1.6; color: var(--ink-2); margin: 0; }
+.src { margin: 24px 0 0; font-size: 16px; }
+pre { margin: 20px 0 0; padding: 16px 18px; background: #f0eee6; border-radius: 10px; overflow-x: auto;
+  font: 13.5px/1.7 ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink-2); }
 
 figure { margin: 88px auto 0; }
 figure img { display: block; width: 100%; height: auto; border-radius: 14px; border: 1px solid var(--line); }
@@ -85,6 +88,7 @@ footer { margin: 120px 0 0; padding: 28px 0 48px; border-top: 1px solid var(--li
   <div class="col">
     <h1>A hazard log that keeps up with the product it describes.</h1>
     <p class="lede">Open Hazard Log is an open-source tool for Clinical Safety Officers working to DCB0129 and DCB0160. An agent reads your specifications and code and suggests hazards, quoting its sources. Simple checks notice when the evidence behind a control changes. Nothing enters the log until you approve it.</p>
+    <p class="src"><a href="https://github.com/Bioterafi/open-hazard-log">Source on GitHub</a></p>
   </div>
 
   <figure class="wide">
@@ -135,13 +139,19 @@ footer { margin: 120px 0 0; padding: 28px 0 48px; border-top: 1px solid var(--li
 
     <section>
       <h2>Availability</h2>
-      <p>Open Hazard Log is open source under the Apache-2.0 licence. The code is being prepared for release on GitHub, along with Open Hazard Log's own hazard log.</p>
+      <p>Open Hazard Log is open source under the Apache-2.0 licence. The code, its tests, and Open Hazard Log's own hazard log are at <a href="https://github.com/Bioterafi/open-hazard-log">github.com/Bioterafi/open-hazard-log</a>.</p>
+      <p>To try it with made-up data, without an API key:</p>
+<pre>git clone https://github.com/Bioterafi/open-hazard-log
+cd open-hazard-log
+uv sync
+./scripts/demo.sh
+uv run ohl --db demo.db serve --as cso@demo.local</pre>
     </section>
   </div>
 </main>
 
 <footer class="col">
-  Open Hazard Log is a <a href="https://bioterafi.xyz">Bioterafi</a> product.
+  Open Hazard Log is a <a href="https://bioterafi.xyz">Bioterafi</a> product. <a href="https://github.com/Bioterafi/open-hazard-log">Source on GitHub</a>.
 </footer>
 
 </body>

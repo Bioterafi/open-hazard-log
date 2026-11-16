@@ -19,6 +19,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://hazardlog.bioterafi.xyz"
+Source = "https://github.com/Bioterafi/open-hazard-log"
 
 [project.scripts]
 ohl = "ohl.cli:main"

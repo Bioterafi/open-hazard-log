@@ -1,7 +1,7 @@
 # Open Hazard Log by Bioterafi
 
 A DCB0129/DCB0160 hazard log where agents propose and the Clinical Safety Officer decides.
-Open source under the Apache-2.0 licence. Website: https://hazardlog.bioterafi.xyz
+Open source under the Apache-2.0 licence. Website: https://hazardlog.bioterafi.xyz · Source: https://github.com/Bioterafi/open-hazard-log
 The spec is in [SPEC.md](SPEC.md). Built so far: **M1** (the log), **M2** (agent scan and review) and **M3** (evidence and code-change checks).
 
 ## What M1 does
@@ -40,7 +40,11 @@ The demo builds `demo-repo/`, a made-up git repository. It deletes a test, chang
 
 ## Run it
 
+You need [uv](https://docs.astral.sh/uv/) and git.
+
 ```bash
+git clone https://github.com/Bioterafi/open-hazard-log
+cd open-hazard-log
 uv sync
 ./scripts/demo.sh                 # throwaway demo.db with made-up data
 uv run ohl --db demo.db serve --as cso@demo.local     # then open http://127.0.0.1:8000
