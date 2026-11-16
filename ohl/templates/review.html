@@ -1,12 +1,38 @@
 {% extends "base.html" %}
-{% from "macros.html" import freshness %}
 {% set tab = 'review' %}
 {% block title %}Review{% if p %} {{ p.label }}{% endif %} · {{ system.name }}{% endblock %}
+
+{% macro qlabel(q) -%}
+{%- if q.kind == 'new_hazard' %}New hazard: {{ q.payload.title }}
+{%- elif q.kind == 'change_hazard' %}Adds to {{ q.target }}: {{ q.payload.title }}
+{%- elif q.kind == 'evidence_problem' %}Evidence {{ q.payload.state }}: <span class="path">{{ q.payload.location }}</span> <span class="faint small">{{ q.payload.control }}{% if q.payload.hazards %} · {{ q.payload.hazards|join(', ') }}{% endif %}</span>
+{%- else %}Re-review {{ q.target }}: {{ q.payload.files|length }} linked file{{ 's' if q.payload.files|length != 1 }} changed
+{%- endif %}
+{%- endmacro %}
+
+{% macro reject_menu(p, hint) -%}
+<details class="menu" style="margin-left:auto">
+  <summary class="btn">Reject…</summary>
+  <div class="items" style="padding:12px;min-width:300px">
+    <form method="post" action="/s/{{ system.id }}/review/{{ p.id }}/reject" class="stack" style="gap:10px">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <select name="reason" aria-label="Reason" required><option value="">Reason…</option>{% for k, v in reasons.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+      <input type="text" name="detail" placeholder="{{ hint }}" aria-label="Why">
+      <div><button class="btn primary">Reject</button></div>
+    </form>
+  </div>
+</details>
+{%- endmacro %}
+
 {% block main %}
 <div class="title">
   <h1>Review</h1>
   {% if user.role in ('cso', 'contributor') %}
   <div class="actions">
+    <form method="post" action="/s/{{ system.id }}/check" style="margin:0">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="btn">Run checks</button>
+    </form>
     <form method="post" action="/s/{{ system.id }}/scan" style="margin:0">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <button class="btn" {{ 'disabled' if scan_state.state == 'running' }}>Run scan</button>
@@ -14,38 +40,65 @@
   </div>
   {% endif %}
 </div>
-<p class="fresh">Proposals from the agent and the checks. Nothing reaches the log until you decide.
-  {% if last_scan %}Last scan <b>{{ last_scan.at|day }}</b> by {{ who.get(last_scan.started_by, last_scan.started_by) }}{% if last_scan.model_used.startswith('replay:') %} (replayed saved output){% endif %}: {{ last_scan.candidates }} candidate{{ 's' if last_scan.candidates != 1 }},
-  {{ last_scan.proposals|length }} shown, {{ last_scan.hidden_no_verified_quote }} hidden (no verified quote). Lenses run: {{ last_scan.lenses_run|join(', ') or 'none' }}.{% endif %}</p>
+<p class="fresh">Proposals from the agent and the checks. Nothing reaches the log until you decide.</p>
+
+<div class="runs">
+  <div><b>Scan</b> <span class="faint">(AI)</span>:
+    {% if last_scan %}{{ last_scan.at|day }} by {{ who.get(last_scan.started_by, last_scan.started_by) }}{% if last_scan.model_used.startswith('replay:') %} (replayed saved output){% endif %}.
+      {{ last_scan.candidates }} candidate{{ 's' if last_scan.candidates != 1 }}, {{ last_scan.proposals|length }} shown, {{ last_scan.hidden_no_verified_quote }} hidden (no verified quote).{% else %}never run.{% endif %}
+    <span class="faint">It supplements a hazard workshop; it never replaces one.</span></div>
+  <div><b>Checks</b> <span class="faint">(no AI)</span>:
+    {% if last_check %}{{ last_check.at|day }}{% if check_stale %} <span class="tag warn">{{ check_age }} days ago</span>{% endif %}.
+      {{ last_check.evidence_checked }} evidence file{{ 's' if last_check.evidence_checked != 1 }} checked{% if last_check.commit %} at commit {{ last_check.commit[:10] }}{% endif %}, {{ last_check.proposals|length }} raised.{% else %}never run. They re-hash evidence files and look for code changes under each cause's paths.{% endif %}</div>
+</div>
 
 {% if scan_state.state == 'running' %}
 <div class="alert">Scan running since {{ scan_state.started[11:16] }} UTC, started by {{ scan_state.by }}. This usually takes a few minutes. <a href="/s/{{ system.id }}/review">Refresh</a></div>
 {% elif scan_state.state in ('done', 'error') %}
 <div class="alert {{ 'inv' if scan_state.state == 'error' }}">{{ scan_state.message }}</div>
 {% endif %}
-{% if last_scan and last_scan.not_proposed_summary %}<p class="small faint">Not proposed this run: {{ last_scan.not_proposed_summary }}</p>{% endif %}
-<p class="small faint">The scan supplements a hazard workshop; it never replaces one.</p>
+{% if check_state %}<div class="alert {{ 'inv' if check_state.state == 'error' }}">{{ check_state.message }}</div>{% endif %}
+{% if last_scan and last_scan.not_proposed_summary %}<p class="small faint">Not proposed in the last scan: {{ last_scan.not_proposed_summary }}</p>{% endif %}
 
-<div class="box queue" style="margin-bottom:24px">
+<div class="box queue" style="margin-bottom:16px">
   {% for q in queue %}
   <a class="qi {{ 'on' if p and p.id == q.id }}" href="/s/{{ system.id }}/review/{{ q.id }}" style="text-decoration:none">
     <span>{{ q.label }}</span>
-    <span>{{ 'New hazard' if q.kind == 'new_hazard' else 'Adds to ' ~ q.target }}: {{ q.payload.title }}</span>
-    <span class="src">{{ q.origin }} · {{ q.confidence }} confidence</span>
+    <span>{{ qlabel(q) }}</span>
+    <span class="src">{{ 'scan · ' ~ q.confidence ~ ' confidence' if q.origin == 'scan' else 'check' }}</span>
   </a>
   {% else %}
   <div class="empty"><p><b>No proposals waiting.</b></p>
-    <p class="faint">{% if user.role in ('cso', 'contributor') %}Run a scan to get proposals from the system's docs and code.{% endif %}</p></div>
+    <p class="faint">{% if user.role in ('cso', 'contributor') %}Run the checks, or a scan, to look for anything new.{% endif %}</p></div>
   {% endfor %}
 </div>
+
+{% if user.role == 'cso' and bulkable|length >= 2 %}
+<details class="box bulk">
+  <summary>Re-confirm several changed evidence files at once ({{ bulkable|length }})</summary>
+  <form method="post" action="/s/{{ system.id }}/review/bulk" class="bd stack" style="gap:12px;max-width:none">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {% for q in bulkable %}
+    <label class="check"><input type="checkbox" name="ids" value="{{ q.id }}" checked>
+      <span>{{ q.label }} · <span class="path">{{ q.payload.location }}</span> <span class="faint">({{ q.payload.control }}: {{ q.payload.control_description }})</span></span></label>
+    {% endfor %}
+    <label class="check" style="margin-top:6px"><input type="checkbox" name="confirm" required>
+      <span>I've opened each file and it still supports its control.</span></label>
+    <div><button class="btn primary">Re-confirm selected</button></div>
+    <p class="hint" style="margin:0">Only changed evidence can be re-confirmed in bulk. New hazards and ratings never can.</p>
+  </form>
+</details>
+{% endif %}
 
 {% if p %}
 {% if error %}<div class="alert inv">{{ error }}</div>{% endif %}
 {% set pl = p.payload %}
-<div class="split">
+<div class="split" style="margin-top:16px">
+{% if p.origin == 'scan' %}
+  {# ---------------- agent proposal ---------------- #}
   <div class="box">
     <div class="hd"><h3>{{ p.label }} · {{ 'New hazard' if p.kind == 'new_hazard' else 'Adds to ' ~ p.target }}</h3>
-      <span class="faint small">{{ p.origin }} · {{ pl.lens|replace('_', ' ') }} lens · {{ p.prompt_version }} · {{ p.model_used }}</span></div>
+      <span class="faint small">scan · {{ pl.lens|replace('_', ' ') }} lens · {{ p.prompt_version }} · {{ p.model_used }}</span></div>
     <div class="bd">
       {% if p.status != 'pending' %}<div class="alert">{{ p.status|capitalize }}{% if p.reject_reason %}: {{ p.reject_reason }}{% endif %}</div>{% endif %}
       {% if target %}<p>Current {{ target.ref }}: <b>{{ target.title }}</b>. Approving adds the new causes and controls below to it. Ratings don't change; edit the hazard to re-rate.</p>{% endif %}
@@ -97,17 +150,7 @@
       </form>
       {% if blocked %}<span class="btn" aria-disabled="true">Edit</span>
       {% else %}<a class="btn" href="/s/{{ system.id }}/review/{{ p.id }}/edit">Edit</a>{% endif %}
-      <details class="menu" style="margin-left:auto">
-        <summary class="btn">Reject…</summary>
-        <div class="items" style="padding:12px;min-width:300px">
-          <form method="post" action="/s/{{ system.id }}/review/{{ p.id }}/reject" class="stack" style="gap:10px">
-            <input type="hidden" name="csrf" value="{{ csrf }}">
-            <select name="reason" aria-label="Reason" required><option value="">Reason…</option>{% for k, v in reasons.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
-            <input type="text" name="detail" placeholder="Why (helps the next scan)" aria-label="Why">
-            <div><button class="btn primary">Reject</button></div>
-          </form>
-        </div>
-      </details>
+      {{ reject_menu(p, "Why (helps the next scan)") }}
     </div>
     {% endif %}
   </div>
@@ -119,12 +162,80 @@
     <div class="bd">
       <h3 style="margin-bottom:8px">Sources</h3>
       {% for c in p.citations %}
-      <div class="cite">{{ c.path }}{% if c.lines %}:{{ c.lines }}{% endif %}
+      <div class="cite"><span class="path">{{ c.path }}{% if c.lines %}:{{ c.lines }}{% endif %}</span>
         {% if c.found %}<span class="tag">quote found</span>{% else %}<span class="tag warn">quote not found</span>{% endif %}
         <blockquote>"{{ c.quote }}"</blockquote></div>
       {% endfor %}
     </div>
   </div>
+
+{% else %}
+  {# ---------------- check proposal ---------------- #}
+  <div class="box">
+    <div class="hd"><h3>{{ p.label }} · {{ 'Evidence ' ~ pl.state if p.kind == 'evidence_problem' else 'Re-review ' ~ p.target }}</h3>
+      <span class="faint small">check · no AI · run {{ p.run_id }}</span></div>
+    <div class="bd">
+      {% if p.status != 'pending' %}<div class="alert">{{ p.status|capitalize }}{% if p.reject_reason %}: {{ p.reject_reason }}{% endif %}</div>{% endif %}
+      {% if p.kind == 'evidence_problem' %}
+      <dl>
+        <dt>Control</dt><dd>{{ pl.control }} · {{ pl.control_description }} <span class="tag">{{ pl.control_status|replace('_', ' ') }}</span></dd>
+        <dt>Hazards</dt><dd>{% for r in pl.hazards %}<a href="/s/{{ system.id }}/h/{{ r|urlencode }}">{{ r }}</a>{{ ', ' if not loop.last }}{% else %}–{% endfor %}</dd>
+        <dt>Evidence</dt><dd>{{ pl.label }}<br><span class="path">{{ pl.location }}</span></dd>
+        <dt>Now</dt><dd><span class="tag warn">{{ pl.state }}</span></dd>
+        <dt>Version</dt><dd class="small"><span class="faint">confirmed</span> <span class="path">{{ pl.baseline_sha256[:12] or '–' }}</span><br>
+          <span class="faint">now</span> <span class="path">{{ pl.seen_sha256[:12] or 'no file' }}</span></dd>
+        {% if pl.recent_commits %}<dt>Last commits</dt><dd class="small">{% for cm in pl.recent_commits %}<span class="path">{{ cm.sha }}</span> {{ cm.date }} · {{ cm.subject }}{% if not loop.last %}<br>{% endif %}{% endfor %}</dd>{% endif %}
+      </dl>
+      {% else %}
+      <dl>
+        <dt>Hazard</dt><dd><a href="/s/{{ system.id }}/h/{{ p.target|urlencode }}">{{ p.target }}</a> · {{ pl.hazard_title }}</dd>
+        <dt>Changed</dt><dd>{% for f in pl.files %}<span class="path">{{ f }}</span>{% if not loop.last %}<br>{% endif %}{% endfor %}</dd>
+        <dt>Commits</dt><dd class="small">{% for cm in pl.commits %}<span class="path">{{ cm.sha }}</span> {{ cm.date }} · {{ cm.subject }}{% if not loop.last %}<br>{% endif %}{% else %}–{% endfor %}</dd>
+        <dt>Range</dt><dd class="small"><span class="path">{{ pl['from'][:10] }}..{{ pl['to'][:10] }}</span></dd>
+      </dl>
+      {% endif %}
+    </div>
+    {% if user.role == 'cso' and p.status == 'pending' %}
+    <div class="decide">
+      {% if p.kind == 'evidence_problem' %}
+        {% if pl.state == 'changed' %}
+        <form method="post" action="/s/{{ system.id }}/review/{{ p.id }}/approve" style="margin:0">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn primary">Re-confirm evidence</button></form>
+        {% endif %}
+        <form method="post" action="/s/{{ system.id }}/review/{{ p.id }}/invalidate" style="margin:0">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn {{ 'primary' if pl.state == 'missing' }}">Mark control invalid</button></form>
+        {% if pl.hazards %}<a class="btn" href="/s/{{ system.id }}/c/{{ pl.control|urlencode }}/edit?back={{ pl.hazards[0]|urlencode }}">Fix the link</a>{% endif %}
+        {{ reject_menu(p, "e.g. formatting change only") }}
+      {% else %}
+        <form method="post" action="/s/{{ system.id }}/review/{{ p.id }}/approve" style="margin:0">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn primary">Reviewed, still accurate</button></form>
+        <a class="btn" href="/s/{{ system.id }}/h/{{ p.target|urlencode }}/edit">Edit the hazard</a>
+        {{ reject_menu(p, "e.g. change doesn't affect this hazard") }}
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="box">
+    <div class="hd"><h3>Why this was raised</h3></div>
+    <div class="bd"><p class="pre" style="margin:0">{{ p.reasoning }}</p></div>
+    <div class="bd">
+      <h3 style="margin-bottom:6px">What each choice does</h3>
+      <ul class="choices">
+        {% if p.kind == 'evidence_problem' %}
+        {% if pl.state == 'changed' %}<li><b>Re-confirm evidence</b>: you've opened the file and it still supports the control. Its new version becomes the one checked against.</li>{% endif %}
+        <li><b>Mark control invalid</b>: the control no longer holds. Its status changes in the log, and the hazard shows it.</li>
+        <li><b>Fix the link</b>: the evidence moved. Update the control's evidence path, then reject this as a false alarm.</li>
+        <li><b>Reject</b>: no action needed. This exact change won't be raised again; a further change will.</li>
+        {% else %}
+        <li><b>Reviewed, still accurate</b>: the hazard, its controls and ratings still stand. Its last-reviewed date becomes today.</li>
+        <li><b>Edit the hazard</b>: update causes, controls or ratings first, then come back and mark it reviewed.</li>
+        <li><b>Reject</b>: the change doesn't touch this hazard after all.</li>
+        {% endif %}
+      </ul>
+    </div>
+  </div>
+{% endif %}
 </div>
 {% endif %}
 
@@ -133,7 +244,7 @@
 <div class="box tablebox"><table>
   <thead><tr><th>ID</th><th>Proposal</th><th>Decision</th><th>When</th></tr></thead>
   <tbody>{% for q in recent %}
-  <tr><td class="nowrap"><a href="/s/{{ system.id }}/review/{{ q.id }}">{{ q.label }}</a></td><td class="wide">{{ q.payload.title }}</td>
+  <tr><td class="id"><a href="/s/{{ system.id }}/review/{{ q.id }}">{{ q.label }}</a></td><td class="wide">{{ qlabel(q) }}</td>
     <td>{{ q.status|capitalize }}{% if q.reject_reason %}: {{ q.reject_reason }}{% endif %}</td><td class="nowrap faint">{{ q.decided_at|day }}</td></tr>
   {% endfor %}</tbody>
 </table></div>

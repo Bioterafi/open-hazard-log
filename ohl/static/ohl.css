@@ -243,3 +243,15 @@ a.tile:hover { background: var(--panel-2); }
 .chips a { font-size: 13px; text-decoration: none; padding: 5px 12px; border-radius: 999px; color: var(--faint); border: 1px solid var(--line); }
 .chips a:hover { color: var(--ink); background: var(--panel); }
 .chips a.on { background: var(--ink); color: var(--page); border-color: var(--ink); }
+
+/* ---- review: runs, bulk, choices ---- */
+.runs { display: grid; gap: 4px; font-size: 14px; color: var(--ink-2); margin: -12px 0 20px; }
+.runs b { font-weight: 600; color: var(--ink); }
+details.bulk { margin-bottom: 16px; }
+details.bulk > summary { cursor: pointer; padding: 14px 24px; font-size: 14px; font-weight: 500; list-style: none; }
+details.bulk > summary::-webkit-details-marker { display: none; }
+details.bulk > summary::before { content: "▸ "; color: var(--faint); }
+details.bulk[open] > summary::before { content: "▾ "; }
+.choices { margin: 0; padding-left: 18px; font-size: 14px; color: var(--ink-2); }
+.choices li + li { margin-top: 6px; }
+.add .tag, .add .path { text-indent: 0; }

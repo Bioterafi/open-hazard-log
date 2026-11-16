@@ -27,7 +27,7 @@
     {% if user.role == 'cso' %}<a class="btn primary" href="/s/{{ system.id }}/issue">Issue version</a>{% endif %}
   </div>
 </div>
-{{ freshness(system, last_issue, pending, verdict, changes, last_scan) }}
+{{ freshness(system, last_issue, pending, verdict, changes, last_scan, last_check, check_stale, check_age) }}
 
 {# ---------------- headline numbers ---------------- #}
 <section class="tiles" aria-label="Headline numbers">

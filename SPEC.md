@@ -227,7 +227,17 @@ Each lens covers normal use and fault conditions (DCB0129 4.3.1).
 
 The Log page shows when the last scan and last check ran. If checks haven't run for more than 7 days (configurable), the freshness line turns red. This is the control for "the log looks current but isn't" (OHL-H4).
 
-URL evidence (e.g. a training record in another system) is not fetched in v1; it carries a "last confirmed by" date the CSO updates by hand.
+URL evidence (e.g. a training record in another system) is not fetched in v1. It shows as "link, not checked automatically". A "last confirmed" date the CSO updates by hand is still to do.
+
+**As built (16 Nov 2026):**
+- **Observations stay out of the log.** What the checks see goes in their own tables (`evidence_obs`, `check_state`), so the checks never change the approved log. Each run writes one `check_run` event under the actor `check:<run_id>`.
+- **Baselines.** The first time a file is seen, its hash becomes the baseline. Folders hash over their files' names and contents.
+- **What raises a proposal.** A changed or missing file, or new commits since the last check touching a cause's `paths` (exact file, folder prefix, or glob), each raise one proposal. Nothing is raised twice while one is still waiting.
+- **Decisions on evidence problems:** **Re-confirm** (the new version becomes the baseline), **Mark control invalid** (changes the log), or **Reject** (that exact change isn't raised again; a further change is). Invalid controls aren't re-checked.
+- **Decisions on re-reviews:** **Reviewed, still accurate** sets the hazard's last-reviewed date. **Edit the hazard** opens the hazard form.
+- **Bulk re-confirm** works for changed evidence only, behind a confirmation tick.
+- **Freshness.** The dashboard shows when the checks last ran, flagged after 7 days (`check_stale_days` in the system's sources).
+- **Running it.** Use `ohl check --system N` (for cron or CI) or the Run checks button. A test checks `checks.py` for writes to the log.
 
 ---
 
@@ -344,7 +354,7 @@ tests/
 |---|---|---|
 | **M1 Log** ✓ built 16 Nov 2026 | Tables, audit chain, risk matrix config, Log + Hazard pages, manual add/edit, import, export, Issue version. | An existing hazard log can be imported, edited, issued as v1 and exported in template v3.6 columns; `ohl verify` passes; tampering with one event row makes it fail. |
 | **M2 Scan + Review** ✓ built 16 Nov 2026 (real-repo scan not yet run) | Agent, quote check, Review page, blind rating. | A scan of a real repo yields ≤15 proposals, every shown quote is verified, and approve/edit/reject each leave the right event. |
-| **M3 Checks** | Evidence hashing, git-diff re-review, overdue, freshness line. | Deleting a linked test file and changing a linked source file each produce the right proposal on the next `ohl check`. |
+| **M3 Checks** ✓ built 16 Nov 2026 | Evidence hashing, git-diff re-review, overdue, freshness line. | Deleting a linked test file and changing a linked source file each produce the right proposal on the next `ohl check`. |
 | **M4 Pilot** | Run on one real product alongside its human-built log. | Approval/edit/reject rates and CSO minutes per proposal recorded; hazards found only by the agent listed. |
 
 ---

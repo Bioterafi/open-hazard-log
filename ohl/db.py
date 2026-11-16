@@ -128,6 +128,26 @@ CREATE TABLE IF NOT EXISTS event (
   hash      TEXT NOT NULL
 );
 
+-- What the checks last saw. Observations only: not part of the approved log.
+CREATE TABLE IF NOT EXISTS evidence_obs (
+  system_id       INTEGER NOT NULL REFERENCES system(id),
+  control_ref     TEXT NOT NULL,
+  location        TEXT NOT NULL,
+  baseline_sha256 TEXT NOT NULL DEFAULT '',   -- confirmed version (first seen, or re-confirmed by the CSO)
+  seen_sha256     TEXT NOT NULL DEFAULT '',
+  state           TEXT NOT NULL,              -- ok | changed | missing | manual | unresolved
+  ack             TEXT NOT NULL DEFAULT '',   -- problem the CSO has already decided on (state:sha)
+  checked_at      TEXT NOT NULL,
+  PRIMARY KEY (system_id, control_ref, location)
+);
+
+CREATE TABLE IF NOT EXISTS check_state (
+  system_id INTEGER NOT NULL REFERENCES system(id),
+  key       TEXT NOT NULL,
+  value     TEXT NOT NULL,
+  PRIMARY KEY (system_id, key)
+);
+
 -- The audit trail and issued versions are append-only. These triggers stop
 -- casual edits; the hash chain (ohl verify) catches anyone who removes them.
 CREATE TRIGGER IF NOT EXISTS event_no_update BEFORE UPDATE ON event

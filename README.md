@@ -1,7 +1,7 @@
 # Open Hazard Log
 
 A DCB0129/DCB0160 hazard log where agents propose and the Clinical Safety Officer decides.
-The spec is in [SPEC.md](SPEC.md). Built so far: **M1** (the log) and **M2** (agent scan and review).
+The spec is in [SPEC.md](SPEC.md). Built so far: **M1** (the log), **M2** (agent scan and review) and **M3** (evidence and code-change checks).
 
 ## What M1 does
 
@@ -19,7 +19,23 @@ The spec is in [SPEC.md](SPEC.md). Built so far: **M1** (the log) and **M2** (ag
 - **Review:** the CSO rates new hazards blind, and the agent's rating appears only afterwards. The CSO can then approve, edit and approve, or reject with a reason. Rejection reasons are fed into the next scan. Each decision records the blind rating, the suggested rating, the final version and the time spent.
 - **Replay:** `ohl scan --replay saved.json` runs the whole pipeline on a saved model output with no API call. The demo uses this, and it can be used to re-check a prompt change offline.
 
-Not yet: "Ask someone" on a proposal, and bulk approve. Bulk approve comes with the M3 evidence checks.
+Not yet: "Ask someone" on a proposal.
+
+## What M3 adds
+
+- **Checks** (`ohl check` or Run checks on the Review page), with no AI involved. They re-hash every evidence file and look for commits since the last check that touch a cause's code paths.
+- **First run:** each file's current hash is recorded as its baseline.
+- **Later runs:** a changed or missing file, or linked code that changed, becomes a proposal. The checks never change the log themselves, and a test enforces this.
+- **Decisions:** re-confirm evidence, mark a control invalid, mark a hazard reviewed, or reject. Changed evidence can be re-confirmed in bulk.
+- **Freshness:** the dashboard shows when the checks last ran, and flags them after 7 days.
+
+To run them nightly, add a cron line such as:
+
+```bash
+0 6 * * * cd /path/to/hazlog && uv run ohl check --system 1 --as you@trust.nhs.uk
+```
+
+The demo builds `demo-repo/`, a made-up git repository. It deletes a test, changes linked code and edits a doc, so the checks have something to find.
 
 ## Run it
 
@@ -72,7 +88,9 @@ ohl/audit.py      hash chain, verify, export, replay
 ohl/risk.py       risk matrix lookup from config
 ohl/service.py    every change to the log: users, systems, hazards, controls, issue version
 ohl/scan.py       agent scan: gather sources, prompt, model call, schema and quote checks
-ohl/proposals.py  proposal store, blind rating, approve / edit / reject
+ohl/proposals.py  proposal store, blind rating, approve / edit / reject, check decisions
+ohl/checks.py     evidence hashes and git-diff checks (no AI, no write path to the log)
+ohl/dashboard.py  dashboard numbers
 ohl/importer.py   CSV/XLSX import (template layout, matched by header text)
 ohl/export.py     CSV/XLSX/JSON export, deployer actions
 ohl/app.py        web pages; templates/ and static/ohl.css

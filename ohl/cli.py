@@ -136,6 +136,29 @@ def cmd_scan(args):
         print(f"skipped source: {s}")
 
 
+def _user_or_only_cso(conn, email: str | None) -> dict:
+    if email:
+        return _user(conn, email)
+    csos = conn.execute("SELECT email FROM user WHERE role = 'cso'").fetchall()
+    if len(csos) != 1:
+        sys.exit("say who is running this with --as you@example.org")
+    return _user(conn, csos[0]["email"])
+
+
+def cmd_check(args):
+    from . import checks
+    conn = _conn(args)
+    r = checks.run(conn, _user_or_only_cso(conn, args.as_), args.system)
+    print(f"Checks {r.run_id}: {r.evidence_checked} evidence files checked ({r.baselined} seen for the first time), "
+          f"{len(r.proposals)} new proposal{'s' if len(r.proposals) != 1 else ''} for review.")
+    for line in r.problems:
+        print(f"evidence: {line}")
+    for ref in r.code_changed:
+        print(f"linked code changed: {ref}")
+    for note in r.notes:
+        print(f"note: {note}")
+
+
 def cmd_export(args):
     conn = _conn(args)
     issue = S.get_issue(conn, args.system, args.version) if args.version else None
@@ -232,6 +255,11 @@ def main(argv=None):
     sc.add_argument("--max", type=int, help="maximum proposals (default 15)")
     sc.add_argument("--replay", help="use a saved model output (JSON) instead of calling the API")
     sc.set_defaults(fn=cmd_scan)
+
+    ck = sub.add_parser("check", help="run the evidence and code-change checks (no AI); findings go to review")
+    ck.add_argument("--system", type=int, required=True)
+    ck.add_argument("--as", dest="as_", help="CSO or contributor email (default: the only CSO)")
+    ck.set_defaults(fn=cmd_check)
 
     ex = sub.add_parser("export", help="export the hazard log")
     ex.add_argument("--system", type=int, required=True)

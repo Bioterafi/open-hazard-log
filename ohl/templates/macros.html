@@ -11,11 +11,11 @@
 {% else %}<span class="faint">Not rated</span>{% endif %}
 {%- endmacro %}
 
-{% macro freshness(system, last_issue, pending, verdict, changes, last_scan=None) -%}
+{% macro freshness(system, last_issue, pending, verdict, changes, last_scan=None, last_check=None, check_stale=False, check_age=None) -%}
 <p class="fresh">
   {% if last_issue %}Working draft. Last issued <b>v{{ last_issue.number }}, {{ last_issue.issued_at|day }}</b>{% if changes %} · <b>{{ changes }}</b> change{{ 's' if changes != 1 }} since{% endif %}
   {% else %}Working draft. <b>Never issued</b>{% endif %}
-  · Last scan <b>{{ last_scan.at|day if last_scan else 'never' }}</b> · Last checks <b>never</b>
+  · Last scan <b>{{ last_scan.at|day if last_scan else 'never' }}</b> · Last checks {% if last_check %}<b>{{ last_check.at|day }}</b>{% if check_stale %} <span class="tag warn">{{ check_age }} days ago</span>{% endif %}{% else %}<b>never</b>{% endif %}
   · <b>{{ pending }}</b> proposal{{ 's' if pending != 1 }} waiting
   · Audit chain {% if verdict.ok %}<b>intact</b>{% else %}<span class="tag warn">BROKEN at event {{ verdict.bad_seq }}</span>{% endif %}
 </p>

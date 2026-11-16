@@ -186,3 +186,44 @@ def test_page_text_is_escaped(client):
     client.post("/s/1/h/new", data={"csrf": csrf(page.text), "title": "<script>alert(1)</script>", "status": "open"})
     html = client.get("/s/1").text
     assert "<script>alert(1)</script>" not in html and "&lt;script&gt;" in html
+
+
+# ---------------------------------------------------------------- M3: checks in the browser
+
+def test_run_checks_and_decide(client, tmp_path):
+    import os
+    from .test_checks import git
+    repo = tmp_path / "repo"
+    (repo / "tests").mkdir(parents=True)
+    (repo / "src").mkdir()
+    (repo / "tests" / "a.test.ts").write_text("v1\n")
+    (repo / "src" / "a.ts").write_text("v1\n")
+    git(repo, "init", "-q"); git(repo, "add", "-A"); git(repo, "commit", "-q", "-m", "one")
+    c = db.connect(os.environ["OHL_DB"])
+    cso = S.get_user(c, "cso@example.org")
+    S.update_system(c, cso, 1, {"sources": {"repo": str(repo)}})
+    h = S.create_hazard(c, cso, 1, {"title": "Linked hazard", "causes": "Bug [software] {src/a.ts}"})
+    S.create_control(c, cso, 1, {"hazard_refs": [h], "description": "Unit test", "type": "test",
+                                 "status": "verified", "evidence": "A test | tests/a.test.ts"})
+    login(client)
+
+    r = client.post("/s/1/check", data={"csrf": csrf(client.get("/s/1/review").text)})
+    assert "1 evidence file checked (1 seen for the first time), 0 new proposals" in r.text
+    assert "unchanged" in client.get(f"/s/1/h/{h}").text
+
+    (repo / "tests" / "a.test.ts").write_text("v2\n")
+    (repo / "src" / "a.ts").write_text("v2\n")
+    git(repo, "add", "-A"); git(repo, "commit", "-q", "-m", "two")
+    r = client.post("/s/1/check", data={"csrf": csrf(r.text)})
+    assert "2 new proposals" in r.text
+    r = client.get("/s/1/review")                                  # first pending: the evidence problem
+    assert "Evidence changed" in r.text and "Re-confirm evidence" in r.text and "check · no AI" in r.text
+    pid = re.search(r"/s/1/review/(\d+)/approve", r.text).group(1)
+    r = client.post(f"/s/1/review/{pid}/approve", data={"csrf": csrf(r.text)})
+    assert "Re-review H-001" in r.text and "Reviewed, still accurate" in r.text and "two" in r.text
+    pid = re.search(r"/s/1/review/(\d+)/approve", r.text).group(1)
+    r = client.post(f"/s/1/review/{pid}/approve", data={"csrf": csrf(r.text)})
+    assert "No proposals waiting" in r.text
+    assert db.today() in client.get(f"/s/1/h/{h}").text            # last reviewed today
+    dash = client.get("/s/1").text
+    assert "Last checks <b>" in dash and "never</b> · <b>" not in dash

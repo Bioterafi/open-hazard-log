@@ -12,7 +12,7 @@ from datetime import datetime
 
 from . import audit, risk
 from . import service as S
-from .db import dumps, now, tx
+from .db import dumps, now, today, tx
 
 KINDS = ("new_hazard", "change_hazard", "evidence_problem", "re_review")
 REJECT_REASONS = {
@@ -21,6 +21,7 @@ REJECT_REASONS = {
     "out_of_scope": "Out of scope",
     "wrong_context": "Wrong clinical context",
     "already_controlled": "Already controlled",
+    "false_alarm": "False alarm",
     "other": "Other",
 }
 
@@ -90,7 +91,9 @@ def record_run(conn, system_id: int, run: dict, items: list[dict]) -> list[int]:
                  it.get("confidence", "low"), dumps(it.get("suggested_rating", {})), run["run_id"],
                  run.get("model_used", ""), run.get("prompt_version", ""), run.get("inputs_sha256", ""), now()))
             ids.append(cur.lastrowid)
-        audit.append(conn, actor=f"agent:{run['run_id']}", action=f"{run.get('origin', 'scan')}_run",
+        origin = run.get("origin", "scan")
+        actor = f"agent:{run['run_id']}" if origin == "scan" else f"check:{run['run_id']}"  # checks aren't AI
+        audit.append(conn, actor=actor, action=f"{origin}_run",
                      system_id=system_id, object_ref=f"run:{run['run_id']}",
                      after={**{k: v for k, v in run.items() if k != "origin"}, "proposals": [pid(i) for i in ids]},
                      note=f"started by {run.get('started_by', '')}")
@@ -209,8 +212,93 @@ def as_fields(p: dict) -> dict:
     return f
 
 
+# ---------------------------------------------------------------- decisions on check proposals (M3)
+
+def _evidence_obs(conn, p: dict, *, rebaseline: bool = False) -> None:
+    """Record the CSO's decision against what the checks saw, so the same problem isn't raised twice."""
+    pl = p["payload"]
+    if rebaseline:
+        conn.execute("UPDATE evidence_obs SET baseline_sha256 = seen_sha256, state = 'ok', ack = ''"
+                     " WHERE system_id = ? AND control_ref = ? AND location = ? AND seen_sha256 != ''",
+                     (p["system_id"], pl["control"], pl["location"]))
+    else:
+        conn.execute("UPDATE evidence_obs SET ack = ? WHERE system_id = ? AND control_ref = ? AND location = ?",
+                     (pl["fingerprint"], p["system_id"], pl["control"], pl["location"]))
+
+
+def reconfirm_evidence(conn, user: dict, system_id: int, proposal_id: int) -> dict:
+    """The CSO has looked: the changed file still supports the control. Its new version becomes the baseline."""
+    p = get(conn, system_id, proposal_id)
+    _check_pending(user, p)
+    if p["kind"] != "evidence_problem":
+        raise S.Invalid("Only evidence problems can be re-confirmed.")
+    if p["payload"]["state"] != "changed":
+        raise S.Invalid("Missing evidence can't be re-confirmed. Mark the control invalid, or fix the evidence "
+                        "link on the control and dismiss this.")
+    with tx(conn):
+        _evidence_obs(conn, p, rebaseline=True)
+        _decide(conn, user, p, "approved", outcome={"evidence": "re-confirmed", "control": p["payload"]["control"],
+                                                    "location": p["payload"]["location"],
+                                                    "new_sha256": p["payload"]["seen_sha256"]})
+    return {"control": p["payload"]["control"]}
+
+
+def invalidate_control(conn, user: dict, system_id: int, proposal_id: int) -> dict:
+    """The evidence no longer supports the control: mark the control invalid in the log."""
+    p = get(conn, system_id, proposal_id)
+    _check_pending(user, p)
+    if p["kind"] != "evidence_problem":
+        raise S.Invalid("Only evidence problems can invalidate a control.")
+    ref = p["payload"]["control"]
+    with tx(conn):
+        S.update_control(conn, user, system_id, ref, {"status": "invalid"}, note=f"from {p['label']}", _in_tx=True)
+        _evidence_obs(conn, p)
+        _decide(conn, user, p, "approved", outcome={"control": ref, "control_status": "invalid"})
+    return {"control": ref}
+
+
+def mark_reviewed(conn, user: dict, system_id: int, proposal_id: int) -> dict:
+    """Linked code changed; the CSO has re-reviewed the hazard and it still stands. Sets last reviewed to today."""
+    p = get(conn, system_id, proposal_id)
+    _check_pending(user, p)
+    if p["kind"] != "re_review":
+        raise S.Invalid("Only re-review proposals can be marked reviewed.")
+    ref = p["target"]
+    with tx(conn):
+        S.update_hazard(conn, user, system_id, ref, {"last_reviewed": today()}, note=f"re-reviewed for {p['label']}",
+                        _in_tx=True)
+        _decide(conn, user, p, "approved", outcome={"hazard": ref, "last_reviewed": today(),
+                                                    "commits": [c["sha"] for c in p["payload"].get("commits", [])]})
+    return {"hazard": ref}
+
+
+def bulk_reconfirm(conn, user: dict, system_id: int, proposal_ids: list[int], confirmed: bool) -> int:
+    """Re-confirm several changed-evidence proposals at once (SPEC section 7). Never for hazards or ratings."""
+    S.require_cso(user)
+    if not confirmed:
+        raise S.Invalid("Tick the box to confirm you've re-checked each file.")
+    ps = [get(conn, system_id, i) for i in proposal_ids]
+    if not ps:
+        raise S.Invalid("Choose at least one item.")
+    for p in ps:
+        _check_pending(user, p)
+        if p["kind"] != "evidence_problem" or p["payload"]["state"] != "changed":
+            raise S.Invalid(f"{p['label']} can't be bulk re-confirmed; only changed evidence can.")
+    with tx(conn):
+        for p in ps:
+            _evidence_obs(conn, p, rebaseline=True)
+            _decide(conn, user, p, "approved", outcome={"evidence": "re-confirmed", "bulk": True,
+                                                        "control": p["payload"]["control"],
+                                                        "location": p["payload"]["location"]})
+    return len(ps)
+
+
 def approve(conn, user: dict, system_id: int, proposal_id: int) -> dict:
     p = get(conn, system_id, proposal_id)
+    if p["kind"] == "evidence_problem":
+        return reconfirm_evidence(conn, user, system_id, proposal_id)
+    if p["kind"] == "re_review":
+        return mark_reviewed(conn, user, system_id, proposal_id)
     _check_pending(user, p)
     if needs_rating(p) and not p["cso_rating"]:
         raise S.Invalid("Enter your own rating before approving.")
@@ -250,6 +338,8 @@ def reject(conn, user: dict, system_id: int, proposal_id: int, reason: str, deta
     if reason == "other" and not detail.strip():
         raise S.Invalid("Say why, when the reason is Other.")
     with tx(conn):
+        if p["kind"] == "evidence_problem":
+            _evidence_obs(conn, p)  # dismissed: don't raise this exact problem again
         _decide(conn, user, p, "rejected", outcome={}, reject_reason=text)
 
 

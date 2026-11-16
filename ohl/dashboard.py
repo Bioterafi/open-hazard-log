@@ -13,14 +13,18 @@ FILTERS = {
 }
 
 
-def annotate(hazards: list[dict], controls: list[dict], today: str) -> None:
-    """Per-hazard control counts and flags, used by the table and the attention list."""
+def annotate(hazards: list[dict], controls: list[dict], today: str, obs: dict | None = None) -> None:
+    """Per-hazard control counts and flags, used by the table and the attention list.
+    `obs` is what the checks last saw, keyed by (control ref, evidence location)."""
+    obs = obs or {}
     for h in hazards:
         mine = [c for c in controls if h["ref"] in c["hazard_refs"]]
         h["n_controls"] = len(mine)
         h["n_verified"] = sum(c["status"] == "verified" for c in mine)
         h["n_invalid"] = sum(c["status"] == "invalid" for c in mine)
-        h["n_evidence_problem"] = sum(e["state"] in ("changed", "missing") for c in mine for e in c["evidence"])
+        h["n_evidence_problem"] = sum(
+            obs.get((c["ref"], e["path_or_url"]), {}).get("state") in ("changed", "missing")
+            for c in mine if c["status"] != "invalid" for e in c["evidence"])
         h["overdue"] = bool(h["review_due"]) and h["review_due"] < today and h["status"] != "closed"
 
 

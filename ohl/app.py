@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import audit, dashboard, db, export, importer, proposals, risk, scan
+from . import audit, checks, dashboard, db, export, importer, proposals, risk, scan
 from . import service as S
 
 HERE = Path(__file__).resolve().parent
@@ -110,8 +110,8 @@ def describe(e: dict) -> str:
     if e["action"] in ("scan_run", "check_run"):
         a = json.loads(e["after"])
         n, hidden = len(a.get("proposals", [])), a.get("hidden_no_verified_quote", 0)
-        what = "scan" if e["action"] == "scan_run" else "checks"
-        return (f"{what} found {n} proposal{'s' if n != 1 else ''}"
+        what = "scan found" if e["action"] == "scan_run" else "found"
+        return (f"{what} {n} proposal{'s' if n != 1 else ''}"
                 + (f", {hidden} hidden (no verified quote)" if hidden else "")
                 + (" (replayed saved output)" if str(a.get("model_used", "")).startswith("replay:") else ""))
     if e["action"] == "log_imported":
@@ -128,6 +128,8 @@ def summarise(c, evs: list[dict]) -> list[dict]:
     def name(actor: str) -> str:
         if actor.startswith("agent:"):
             return "Agent"
+        if actor.startswith("check:"):
+            return "Checks"
         return who.get(actor, actor)
     out = [dict(e, who=name(e["actor"]), what=describe(e)) for e in evs
            if not e["note"].startswith("imported from ")]
@@ -138,9 +140,16 @@ def log_context(c, sid: int) -> dict:
     s = S.get_system(c, sid)
     issues = S.list_issues(c, sid)
     v = audit.verify(c)
+    last_check = checks.last_run(c, sid)
+    age = None
+    if last_check:
+        from datetime import date
+        age = (date.fromisoformat(db.today()) - date.fromisoformat(last_check["at"][:10])).days
     return {"system": s, "scheme": s["risk_scheme"], "last_issue": issues[0] if issues else None,
             "pending": S.pending_proposals(c, sid), "verdict": v,
-            "changes": len(S.changes_since_issue(c, sid)), "last_scan": proposals.last_run(c, sid)}
+            "changes": len(S.changes_since_issue(c, sid)), "last_scan": proposals.last_run(c, sid),
+            "last_check": last_check, "check_age": age,
+            "check_stale": age is not None and age > checks.stale_days(s)}
 
 
 # ---------------------------------------------------------------- systems
@@ -218,7 +227,7 @@ def log(request: Request, sid: int, f: str = "", stage: str = "", sev: str = "",
     ctx = log_context(c, sid)
     hazards = S.list_hazards(c, sid)
     controls = S.list_controls(c, sid)
-    dashboard.annotate(hazards, controls, db.today())
+    dashboard.annotate(hazards, controls, db.today(), checks.observations(c, sid))
     scheme = ctx["scheme"]
     st = dashboard.stats(scheme, hazards, controls, pending=ctx["pending"], changes=ctx["changes"])
     shown, filter_label = dashboard.apply_filter(hazards, f, stage, sev, lik)
@@ -269,11 +278,41 @@ async def scan_start(request: Request, sid: int):
     return go(f"/s/{sid}/review")
 
 
+# ---------------------------------------------------------------- checks (fast, so they run in the request)
+
+CHECKS: dict[int, dict] = {}  # system id -> message from the last web-started check, shown once
+
+
+@app.post("/s/{sid}/check")
+async def check_start(request: Request, sid: int):
+    await form_of(request)
+    c = conn()
+    u = current_user(request, c)
+    try:
+        r = checks.run(c, u, sid)
+    except S.Forbidden:
+        raise
+    except Exception as e:
+        CHECKS[sid] = {"state": "error", "message": f"Checks failed, nothing stored: {type(e).__name__}: {e}"}
+        return go(f"/s/{sid}/review")
+    n = len(r.proposals)
+    msg = (f"Checks done: {r.evidence_checked} evidence file{'s' if r.evidence_checked != 1 else ''} checked"
+           + (f" ({r.baselined} seen for the first time)" if r.baselined else "")
+           + f", {n} new proposal{'s' if n != 1 else ''}.")
+    if r.notes:
+        msg += " " + " ".join(n_.capitalize() + "." for n_ in r.notes)
+    CHECKS[sid] = {"state": "done", "message": msg}
+    return go(f"/s/{sid}/review")
+
+
 # ---------------------------------------------------------------- review
 
 def review_context(c, sid: int) -> dict:
-    return {**log_context(c, sid), "queue": proposals.pending(c, sid), "recent": proposals.decided(c, sid),
+    queue = proposals.pending(c, sid)
+    return {**log_context(c, sid), "queue": queue, "recent": proposals.decided(c, sid),
             "scan_state": {k: v for k, v in SCANS.get(sid, {}).items() if k != "thread"},
+            "check_state": CHECKS.pop(sid, None),
+            "bulkable": [q for q in queue if q["kind"] == "evidence_problem" and q["payload"].get("state") == "changed"],
             "reasons": proposals.REJECT_REASONS, "who": names(c)}
 
 
@@ -281,10 +320,10 @@ def review_context(c, sid: int) -> dict:
 def review(request: Request, sid: int):
     c = conn()
     u = current_user(request, c)
-    ctx = review_context(c, sid)
-    if ctx["queue"] and ctx["scan_state"].get("state") != "running":
-        return go(f"/s/{sid}/review/{ctx['queue'][0]['id']}")
-    return page(request, "review.html", user=u, p=None, **ctx)
+    queue = proposals.pending(c, sid)
+    if queue and SCANS.get(sid, {}).get("state") != "running":
+        return go(f"/s/{sid}/review/{queue[0]['id']}")  # the run message waits for the page that shows it
+    return page(request, "review.html", user=u, p=None, **review_context(c, sid))
 
 
 @app.get("/s/{sid}/review/{pid}", response_class=HTMLResponse)
@@ -293,7 +332,7 @@ def review_item(request: Request, sid: int, pid: int):
     u = current_user(request, c)
     p = proposals.get(c, sid, pid)
     proposals.mark_viewed(c, u, p)
-    target = S.get_hazard(c, sid, p["target"]) if p["target"] else None
+    target = S.get_hazard(c, sid, p["target"]) if p["target"] and p["kind"] != "evidence_problem" else None
     return page(request, "review.html", user=u, p=p, target=target, error=request.query_params.get("error", ""),
                 **review_context(c, sid))
 
@@ -329,6 +368,33 @@ async def review_approve(request: Request, sid: int, pid: int):
         proposals.approve(c, u, sid, pid)
     except S.Invalid as e:
         return _back_with(sid, pid, str(e))
+    return _next(c, sid)
+
+
+@app.post("/s/{sid}/review/{pid}/invalidate")
+async def review_invalidate(request: Request, sid: int, pid: int):
+    await form_of(request)
+    c = conn()
+    u = current_user(request, c)
+    try:
+        proposals.invalidate_control(c, u, sid, pid)
+    except S.Invalid as e:
+        return _back_with(sid, pid, str(e))
+    return _next(c, sid)
+
+
+@app.post("/s/{sid}/review/bulk")
+async def review_bulk(request: Request, sid: int):
+    form = await form_of(request)
+    c = conn()
+    u = current_user(request, c)
+    ids = [int(x) for x in form.getlist("ids") if str(x).isdigit()]
+    try:
+        n = proposals.bulk_reconfirm(c, u, sid, ids, form.get("confirm") == "on")
+    except S.Invalid as e:
+        CHECKS[sid] = {"state": "error", "message": str(e)}
+        return go(f"/s/{sid}/review")
+    CHECKS[sid] = {"state": "done", "message": f"Re-confirmed {n} evidence item{'s' if n != 1 else ''}."}
     return _next(c, sid)
 
 
@@ -410,6 +476,10 @@ def hazard(request: Request, sid: int, ref: str):
     u = current_user(request, c)
     h = S.get_hazard(c, sid, ref)
     controls = S.list_controls(c, sid, ref)
+    obs = checks.observations(c, sid)
+    for ctl in controls:
+        for e in ctl["evidence"]:
+            e["obs"] = obs.get((ctl["ref"], e["path_or_url"]))
     refs = {ref, *(x["ref"] for x in controls)}
     who = names(c)
     history = [dict(e, who=who.get(e["actor"], e["actor"]), what=describe(e))

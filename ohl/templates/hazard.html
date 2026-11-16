@@ -35,7 +35,11 @@
           <span class="r">{% if c.status == 'invalid' %}<span class="tag warn">invalid</span>{% else %}<span class="tag">{{ c.status|replace('_', ' ') }}</span>{% endif %}</span>
         </div>
         {% for e in c.evidence %}
-        <div class="ev"><span class="faint">  ↳</span><span>{{ e.label }}{% if e.path_or_url %} <span class="path">{{ e.path_or_url }}</span>{% endif %}</span><span class="r faint">{{ e.state }}</span></div>
+        <div class="ev"><span class="faint">  ↳</span><span>{{ e.label }}{% if e.path_or_url %} <span class="path">{{ e.path_or_url }}</span>{% endif %}</span><span class="r">{% set o = e.obs %}{% if not o %}<span class="faint">not checked yet</span>
+          {% elif o.state == 'ok' %}<span class="faint">unchanged · {{ o.checked_at|day }}</span>
+          {% elif o.state in ('changed', 'missing') %}<span class="tag warn">{{ o.state }}</span> <span class="faint">{{ o.checked_at|day }}</span>
+          {% elif o.state == 'manual' %}<span class="faint">link, not checked automatically</span>
+          {% else %}<span class="faint">can't resolve: no repository set</span>{% endif %}</span></div>
         {% endfor %}
         {% else %}
         <p class="faint" style="margin:0">No controls yet.</p>
