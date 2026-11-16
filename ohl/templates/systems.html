@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% set tab = 'systems' %}
+{% block title %}Systems · Open Hazard Log{% endblock %}
+{% block main %}
+<div class="title"><h1>Systems</h1></div>
+<p class="fresh">Each system has its own hazard log, risk scheme and issued versions.</p>
+<div class="box tablebox">
+  <table>
+    <thead><tr><th>System</th><th>Hazards</th><th>Last issued</th></tr></thead>
+    <tbody>
+    {% for s in systems %}
+    <tr class="link" onclick="location.href='/s/{{ s.id }}'">
+      <td class="wide"><a href="/s/{{ s.id }}" style="text-decoration:none">{{ s.name }} {{ s.version }}</a></td>
+      <td>{{ s.hazards }}</td>
+      <td class="nowrap">{% if s.issues %}v{{ s.issues[0].number }}, {{ s.issues[0].issued_at|day }}{% else %}<span class="faint">never</span>{% endif %}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="3" class="faint">No systems yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if user.role == 'cso' %}
+<div class="box">
+  <div class="hd"><h3>New system</h3></div>
+  <div class="bd">
+    {% if error %}<div class="alert inv">{{ error }}</div>{% endif %}
+    <form class="stack" method="post" action="/systems">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <div class="pair">
+        <div><label for="name">Name</label><input type="text" id="name" name="name" value="{{ values.name or '' }}" required></div>
+        <div><label for="version">Version</label><input type="text" id="version" name="version" value="{{ values.version or '' }}"></div>
+      </div>
+      <div><label for="intended_use">Intended use</label><textarea id="intended_use" name="intended_use">{{ values.intended_use or '' }}</textarea>
+        <div class="hint">DCB0129 4.2: the clinical scope and intended use the hazards are judged against.</div></div>
+      <div><label for="clinical_context">Clinical context</label><textarea id="clinical_context" name="clinical_context">{{ values.clinical_context or '' }}</textarea></div>
+      <div class="formactions"><button class="btn primary">Create system</button></div>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

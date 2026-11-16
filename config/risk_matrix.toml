@@ -1,0 +1,64 @@
+# Default risk scheme for new systems.
+#
+# Source: DCB0129 implementation guidance v3.2, section 4.4 and 5.1, Tables 7-10
+# (identical in DCB0160 guidance v4.2, Tables 9-10). The guidance marks these
+# tables as examples "for illustrative purposes only": each organisation sets its
+# own scheme in its Clinical Risk Management Plan (DCB0129 3.2.1).
+#
+# This file is copied into a system when the system is created, so later edits
+# here never change an existing system's ratings. Help text below is paraphrased;
+# replace it with your Plan's exact wording.
+
+name = "DCB0129 example scheme (implementation guidance v3.2, Tables 7-10)"
+
+severities = ["minor", "significant", "considerable", "major", "catastrophic"]
+likelihoods = ["very_low", "low", "medium", "high", "very_high"]
+
+[labels]
+minor = "Minor"
+significant = "Significant"
+considerable = "Considerable"
+major = "Major"
+catastrophic = "Catastrophic"
+very_low = "Very low"
+low = "Low"
+medium = "Medium"
+high = "High"
+very_high = "Very high"
+
+# Rows: likelihood. Columns: severity in the order of `severities` above.
+[matrix]
+very_high = [3, 4, 4, 5, 5]
+high      = [2, 3, 3, 4, 5]
+medium    = [2, 2, 3, 3, 4]
+low       = [1, 2, 2, 3, 4]
+very_low  = [1, 1, 2, 2, 3]
+
+[acceptability]
+1 = "Acceptable, no further action required"
+2 = "Acceptable where further reduction costs more than it gains or is impractical"
+3 = "Undesirable; acceptable only where further reduction is impractical"
+4 = "Must be eliminated or controlled to an acceptable level"
+5 = "Unacceptable"
+
+# Short labels used in tables.
+[short]
+1 = "acceptable"
+2 = "acceptable where impractical"
+3 = "undesirable"
+4 = "must be controlled"
+5 = "unacceptable"
+
+[severity_help]
+minor = "Minor injury with short-term recovery, minor upset or inconvenience; one patient"
+significant = "Minor injury without short-term recovery or significant psychological trauma for one patient; or minor injury, upset or inconvenience for many"
+considerable = "Severe injury with short-term recovery or severe psychological trauma for one patient; or longer-lasting minor injury or significant trauma for many"
+major = "Death or permanent life-changing harm for one patient; or severe injury with short-term recovery or severe trauma for many"
+catastrophic = "Death or permanent life-changing harm for many patients"
+
+[likelihood_help]
+very_low = "Negligible or almost negligible chance"
+low = "Could happen, but in the vast majority of cases will not"
+medium = "Possible"
+high = "Very possible; expected in most cases"
+very_high = "Certain or almost certain"

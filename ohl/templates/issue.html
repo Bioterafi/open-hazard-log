@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% from "macros.html" import freshness %}
+{% set tab = 'log' %}
+{% block title %}Issue version · {{ system.name }}{% endblock %}
+{% block main %}
+<p class="small"><a href="/s/{{ system.id }}">← Log</a></p>
+<div class="title"><h1>Issued versions</h1></div>
+<p class="fresh">DCB0129 3.3.2: a Clinical Safety Officer approves each version of the hazard log. An issued version is frozen and accompanies a Clinical Safety Case Report (3.3.3).</p>
+
+{% if user.role == 'cso' %}
+<div class="box">
+  <div class="hd"><h3>Issue v{{ (last_issue.number if last_issue else 0) + 1 }}</h3></div>
+  <div class="bd">
+    <p>{{ n_hazards }} hazard{{ 's' if n_hazards != 1 }} · {{ change_list|length }} change{{ 's' if change_list|length != 1 }} since {{ 'v' ~ last_issue.number if last_issue else 'the start' }} · {{ pending }} proposal{{ 's' if pending != 1 }} still waiting</p>
+    {% if unrated %}<div class="alert">Not yet rated for residual risk: {{ unrated|join(', ') }}</div>{% endif %}
+    {% if change_list %}
+    <ul class="hist">{% for e in change_list %}<li>{{ e.at|day }} · {{ e.who }} · {{ e.what }}{% if e.note %} <span class="faint">({{ e.note }})</span>{% endif %}</li>{% endfor %}</ul>
+    {% endif %}
+  </div>
+  <div class="bd">
+    <form class="stack" method="post">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <div><label for="note">Note</label><input type="text" id="note" name="note" placeholder="e.g. For release 2.3 safety case report"></div>
+      <label class="check"><input type="checkbox" name="confirm" required>
+        <span>I, {{ user.name }} ({{ user.registration }}), approve this version of the hazard log as Clinical Safety Officer.</span></label>
+      <div class="formactions"><button class="btn primary">Issue version</button></div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<div class="box tablebox">
+  <table>
+    <thead><tr><th>Version</th><th>Issued</th><th>By</th><th>Note</th><th>Export</th></tr></thead>
+    <tbody>
+    {% for i in issues %}
+    <tr>
+      <td class="nowrap"><b>v{{ i.number }}</b></td>
+      <td class="nowrap">{{ i.issued_at|day }}</td>
+      <td>{{ i.issued_by.name }}<br><span class="faint small">{{ i.issued_by.registration }}</span></td>
+      <td>{{ i.note or '–' }}{% if i.repo_commit %}<br><span class="faint small">commit {{ i.repo_commit[:10] }}</span>{% endif %}</td>
+      <td class="nowrap"><a href="/s/{{ system.id }}/export?format=xlsx&version={{ i.number }}">XLSX</a> · <a href="/s/{{ system.id }}/export?format=csv&version={{ i.number }}">CSV</a> · <a href="/s/{{ system.id }}/export?format=json&version={{ i.number }}">JSON</a> · <a href="/s/{{ system.id }}/export?format=deployer-csv&version={{ i.number }}">Deployer</a></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="faint">No version issued yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

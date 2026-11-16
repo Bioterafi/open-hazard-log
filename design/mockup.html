@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open Hazard Log — mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* ---- Tokens: black, white, one grey. That's all. ---- */
+:root {
+  --paper: #FFFFFF;
+  --ink: #000000;
+  --faint: #595959;   /* secondary text, 7:1 on white */
+  --type: "Courier Prime", "Courier New", Courier, ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --paper: #000000; --ink: #FFFFFF; --faint: #A6A6A6; }
+}
+:root[data-theme="dark"] { --paper: #000000; --ink: #FFFFFF; --faint: #A6A6A6; }
+
+/* ---- Base ---- */
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.6 var(--type); }
+h1, h2, h3 { font-weight: 700; margin: 0; }
+h1 { font-size: 22px; }
+h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
+a { color: inherit; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+.faint { color: var(--faint); }
+.nowrap { white-space: nowrap; }
+.sample { border-bottom: 1px solid var(--ink); font-size: 13px; text-align: center; padding: 4px 16px; }
+
+/* ---- Top bar ---- */
+header { border-bottom: 2px solid var(--ink); }
+header .wrap { display: flex; align-items: center; gap: 28px; min-height: 52px; flex-wrap: wrap; }
+.brand { font-weight: 700; text-transform: uppercase; letter-spacing: .12em; }
+nav { display: flex; gap: 22px; }
+nav a { text-decoration: none; cursor: pointer; padding: 2px 0; }
+nav a.on { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 5px; font-weight: 700; }
+.who { margin-left: auto; font-size: 13px; color: var(--faint); }
+
+/* ---- Page furniture ---- */
+main { padding: 32px 0 64px; }
+.page { display: none; } .page.on { display: block; }
+.title { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
+.title .actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+.fresh { font-size: 13px; color: var(--faint); margin: 0 0 24px; }
+.fresh b { color: var(--ink); }
+.btn { font: inherit; font-size: 14px; border: 1px solid var(--ink); background: var(--paper); color: var(--ink); padding: 5px 12px; border-radius: 0; cursor: pointer; }
+.btn:hover:not([disabled]) { background: var(--ink); color: var(--paper); }
+.btn.primary { background: var(--ink); color: var(--paper); }
+.btn[disabled] { border-style: dashed; color: var(--faint); background: var(--paper); cursor: not-allowed; }
+.btn:focus-visible, select:focus-visible, nav a:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+.box { border: 1px solid var(--ink); }
+
+/* ---- Table ---- */
+.tablebox { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 10px 14px; vertical-align: top; font-size: 14px; }
+td:nth-child(2) { min-width: 240px; }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; border-bottom: 2px solid var(--ink); }
+td { border-bottom: 1px dashed var(--ink); }
+tr:last-child td { border-bottom: 0; }
+tbody tr { cursor: pointer; }
+tbody tr:hover td { text-decoration: underline; }
+
+/* ---- Risk: number + blocks + word. No colour. ---- */
+.risk { white-space: nowrap; }
+.risk .bl { letter-spacing: 1px; }
+.tag { font-size: 13px; border: 1px solid var(--ink); padding: 0 6px; white-space: nowrap; }
+.tag.warn { background: var(--ink); color: var(--paper); }
+
+/* ---- Review ---- */
+.split { display: grid; grid-template-columns: 1.15fr 1fr; gap: 20px; align-items: start; }
+@media (max-width: 780px) { .split { grid-template-columns: 1fr; } }
+.box .hd { padding: 10px 16px; border-bottom: 1px solid var(--ink); display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.box .bd { padding: 14px 16px; }
+.box .bd + .bd { border-top: 1px dashed var(--ink); }
+dl { margin: 0; display: grid; grid-template-columns: 110px 1fr; gap: 10px 14px; }
+dt { color: var(--faint); font-size: 13px; text-transform: uppercase; letter-spacing: .06em; padding-top: 2px; }
+dd { margin: 0; }
+.add { display: block; padding-left: 18px; text-indent: -18px; }
+.add::before { content: "+ "; font-weight: 700; }
+blockquote { margin: 6px 0 0; padding: 2px 0 2px 12px; border-left: 2px solid var(--ink); font-size: 14px; }
+.cite { margin-bottom: 14px; }
+.rate { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0 4px; }
+select { font: inherit; width: 100%; padding: 5px 8px; border: 1px solid var(--ink); border-radius: 0; background: var(--paper); color: var(--ink); }
+.decide { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 16px; border-top: 1px solid var(--ink); }
+.queue { margin-bottom: 24px; }
+.qi { display: flex; gap: 14px; align-items: baseline; padding: 9px 14px; border-bottom: 1px dashed var(--ink); cursor: pointer; flex-wrap: wrap; }
+.qi:last-child { border-bottom: 0; }
+.qi.on { background: var(--ink); color: var(--paper); }
+.qi .src { margin-left: auto; font-size: 13px; }
+
+/* ---- Hazard ---- */
+.ev { display: flex; gap: 10px; align-items: baseline; padding: 7px 0; border-top: 1px dashed var(--ink); font-size: 14px; flex-wrap: wrap; }
+.ev:first-child { border-top: 0; }
+.ev .r { margin-left: auto; font-size: 13px; }
+.hist { margin: 0; padding-left: 0; list-style: none; font-size: 14px; }
+.hist li { margin-bottom: 6px; }
+.hist li::before { content: "— "; }
+.legend { font-size: 13px; color: var(--faint); margin-top: 14px; }
+</style>
+</head>
+<body>
+<div class="sample">DESIGN MOCKUP — ALL DATA IS MADE-UP SAMPLE DATA</div>
+<header><div class="wrap">
+  <span class="brand">Open Hazard Log</span>
+  <nav>
+    <a data-p="log" class="on" tabindex="0">Log</a>
+    <a data-p="review" tabindex="0">Review (3)</a>
+    <a data-p="hazard" tabindex="0">Hazard</a>
+  </nav>
+  <span class="who">A. Osutuk, CSO</span>
+</div></header>
+
+<main class="wrap">
+
+<!-- ================= LOG ================= -->
+<section class="page on" id="log">
+  <div class="title">
+    <h1>Ward Results Viewer 2.3</h1>
+    <div class="actions"><button class="btn">Add hazard</button><button class="btn">Export</button><button class="btn primary">Issue version</button></div>
+  </div>
+  <p class="fresh">Working draft. Last issued <b>v3, 12 Sep 2026</b> · Last scan <b>2 days ago</b> · Last checks <b>today 06:00</b> · <b>3</b> proposals waiting · Audit chain <b>intact</b></p>
+  <div class="box tablebox">
+  <table>
+    <thead><tr><th>ID</th><th>Hazard</th><th>Risk</th><th>Controls</th><th>Review</th></tr></thead>
+    <tbody>
+      <tr data-go="hazard"><td class="nowrap">H-001</td><td>Results shown against the wrong patient after switching patient context</td><td class="nowrap" aria-label="Risk 4 initial, 2 residual">4 → <b>2</b> <span class="bl" aria-hidden="true">■■□□□</span></td><td>3/3 verified</td><td class="nowrap faint">Mar 2027</td></tr>
+      <tr><td class="nowrap">H-002</td><td>Critical potassium not flagged when the lab sends different units</td><td class="nowrap" aria-label="Risk 4 initial, 2 residual">4 → <b>2</b> <span class="bl" aria-hidden="true">■■□□□</span></td><td><span class="tag warn">1 evidence missing</span></td><td class="nowrap faint">Jan 2027</td></tr>
+      <tr><td class="nowrap">H-003</td><td>Viewer unavailable during downtime, so recent bloods cannot be seen</td><td class="nowrap" aria-label="Risk 3 initial, 2 residual">3 → <b>2</b> <span class="bl" aria-hidden="true">■■□□□</span></td><td>2/2 verified</td><td class="nowrap faint">Feb 2027</td></tr>
+      <tr><td class="nowrap">H-004</td><td>Delayed results displayed as if current after an interface backlog</td><td class="nowrap" aria-label="Risk 3 initial, 3 residual">3 → <b>3</b> <span class="bl" aria-hidden="true">■■■□□</span></td><td><span class="tag">re-review: code changed</span></td><td class="nowrap faint">Dec 2026</td></tr>
+      <tr><td class="nowrap">H-005</td><td>Truncated lab comment hides "sample haemolysed" note</td><td class="nowrap" aria-label="Risk 2 initial, 1 residual">2 → <b>1</b> <span class="bl" aria-hidden="true">■□□□□</span></td><td>1/1 verified</td><td class="nowrap faint">May 2027</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="legend">Risk is initial → <b>residual</b>. 1 acceptable · 2 acceptable where further reduction is impractical · 3 undesirable · 4 must be controlled · 5 unacceptable</p>
+</section>
+
+<!-- ================= REVIEW ================= -->
+<section class="page" id="review">
+  <div class="title"><h1>Review</h1></div>
+  <p class="fresh">Proposals from the agent and the checks. Nothing reaches the log until you decide.</p>
+
+  <div class="box queue">
+    <div class="qi on"><span>P-031</span><span>New hazard: paediatric reference ranges missing</span><span class="src">scan · medium confidence</span></div>
+    <div class="qi"><span>P-032</span><span>Evidence missing: TC-22 deleted (C-07, H-002)</span><span class="src">check</span></div>
+    <div class="qi"><span>P-033</span><span>Re-review: src/results/stale.ts changed (H-004)</span><span class="src">check</span></div>
+  </div>
+
+  <div class="split">
+    <div class="box">
+      <div class="hd"><h3>P-031 · New hazard</h3><span class="faint" style="font-size:13px">scan · prompt scan-v1 · claude-opus-5-5</span></div>
+      <div class="bd">
+        <dl>
+          <dt>Title</dt><dd><span class="add">Paediatric reference ranges missing, so abnormal results look normal</span></dd>
+          <dt>Cause</dt><dd><span class="add">Range table has adult ranges only; no age banding. [software]</span></dd>
+          <dt>Effect</dt><dd><span class="add">Abnormal result not highlighted for a child.</span></dd>
+          <dt>Harm</dt><dd><span class="add">Delayed treatment, e.g. missed hypoglycaemia or hyperkalaemia.</span></dd>
+          <dt>Controls</dt><dd><span class="add">Design: age-banded ranges.</span><span class="add">Test: paediatric range cases.</span><span class="add">Process: hide ranges for under-16s until fixed.</span></dd>
+        </dl>
+      </div>
+      <div class="bd">
+        <h3>Your rating</h3>
+        <p class="faint" style="font-size:13px;margin:4px 0 0">Rate first. The agent's suggestion appears after.</p>
+        <div class="rate">
+          <select aria-label="Severity"><option>Severity…</option><option>Minor</option><option>Significant</option><option>Considerable</option><option>Major</option><option>Catastrophic</option></select>
+          <select aria-label="Likelihood"><option>Likelihood…</option><option>Very low</option><option>Low</option><option>Medium</option><option>High</option><option>Very high</option></select>
+        </div>
+      </div>
+      <div class="decide">
+        <button class="btn primary" disabled title="Enter your rating first">Approve</button>
+        <button class="btn">Edit</button>
+        <button class="btn">Reject…</button>
+        <button class="btn" style="margin-left:auto">Ask someone</button>
+      </div>
+    </div>
+
+    <div class="box">
+      <div class="hd"><h3>Why the agent proposed this</h3></div>
+      <div class="bd">
+        <p style="margin-top:0">The intended-use statement covers "all inpatients", which includes children. The range lookup only holds adult values, so a child's result is compared with adult limits.</p>
+      </div>
+      <div class="bd">
+        <h3>Assumptions</h3>
+        <p style="margin:6px 0 0">The viewer is used on paediatric wards. No separate paediatric system exists at the site.</p>
+      </div>
+      <div class="bd">
+        <h3 style="margin-bottom:8px">Sources</h3>
+        <div class="cite">docs/intended-use.md <span class="faint">[quote found]</span><blockquote>"…for reviewing results for all inpatients across the Trust."</blockquote></div>
+        <div class="cite">src/results/ranges.ts:14-31 <span class="faint">[quote found]</span><blockquote>"const RANGES = ADULT_RANGES; // TODO paeds"</blockquote></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= HAZARD ================= -->
+<section class="page" id="hazard">
+  <div class="title">
+    <h1>H-001 · Results shown against the wrong patient after switching patient context</h1>
+    <div class="actions"><button class="btn">Edit</button></div>
+  </div>
+  <p class="fresh">Open · Owner A. Osutuk · Last reviewed 12 Sep 2026 · Version 4</p>
+
+  <div class="split">
+    <div class="box"><div class="bd">
+      <dl>
+        <dt>Description</dt><dd>When a clinician switches patient while results are loading, the previous patient's results can render under the new patient's banner.</dd>
+        <dt>Causes</dt><dd>Race between patient-context event and results fetch. [software]<br>Two tabs open on different patients. [human factors]</dd>
+        <dt>Harm</dt><dd>Treatment decided on another patient's results.</dd>
+        <dt>Initial</dt><dd><span class="risk">4 <span class="bl" aria-hidden="true">■■■■□</span> must be controlled</span><br><span class="faint">Major × Medium</span></dd>
+        <dt>Residual</dt><dd><span class="risk">2 <span class="bl" aria-hidden="true">■■□□□</span> acceptable where impractical</span><br><span class="faint">Major × Very low</span></dd>
+        <dt>Deployer</dt><dd>Configure single-patient session mode at each site.</dd>
+      </dl>
+    </div></div>
+
+    <div class="box">
+      <div class="hd"><h3>Controls and evidence</h3></div>
+      <div class="bd">
+        <div class="ev"><span>C-01</span><span>Design: results request carries patient ID; mismatch discards render</span><span class="r">[verified]</span></div>
+        <div class="ev"><span class="faint">  ↳</span><span>tests/context_switch.test.ts</span><span class="r faint">hash ok · today</span></div>
+        <div class="ev"><span>C-02</span><span>Design: banner and results share one patient ID source</span><span class="r">[verified]</span></div>
+        <div class="ev"><span class="faint">  ↳</span><span>docs/design/patient-context.md</span><span class="r faint">hash ok · today</span></div>
+        <div class="ev"><span>C-03</span><span>Training: check banner before acting on results</span><span class="r">[verified]</span></div>
+      </div>
+      <div class="hd" style="border-top:1px solid var(--ink)"><h3>History</h3></div>
+      <div class="bd"><ul class="hist">
+        <li>12 Sep 2026 · A. Osutuk approved P-014 (residual 3 → 2)</li>
+        <li>02 Jul 2026 · A. Osutuk added C-02</li>
+        <li>14 May 2026 · A. Osutuk created from P-003</li>
+      </ul></div>
+    </div>
+  </div>
+</section>
+</main>
+
+<script>
+  const show = p => {
+    document.querySelectorAll('.page').forEach(s => s.classList.toggle('on', s.id === p));
+    document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', a.dataset.p === p));
+  };
+  document.querySelectorAll('[data-p]').forEach(a => {
+    a.onclick = () => show(a.dataset.p);
+    a.onkeydown = e => { if (e.key === 'Enter') show(a.dataset.p); };
+  });
+  document.querySelectorAll('[data-go]').forEach(r => r.onclick = () => show(r.dataset.go));
+  const sels = document.querySelectorAll('.rate select'), ok = document.querySelector('.decide .primary');
+  sels.forEach(s => s.onchange = () => { ok.disabled = [...sels].some(x => x.selectedIndex === 0); });
+</script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+[project]
+name = "ohl"
+version = "0.1.0"
+description = "Open Hazard Log: a DCB0129/DCB0160 hazard log where agents propose and the Clinical Safety Officer decides."
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "jinja2>=3.1",
+  "python-multipart>=0.0.9",
+  "itsdangerous>=2.2",
+  "openpyxl>=3.1",
+]
+
+[project.scripts]
+ohl = "ohl.cli:main"
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.16.2",
+    "pytest>=8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ohl"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

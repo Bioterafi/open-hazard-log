@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% set tab = 'log' %}
+{% block title %}{{ 'New control' if is_new else 'Edit ' ~ ctl.ref }} · {{ system.name }}{% endblock %}
+{% block main %}
+<p class="small"><a href="/s/{{ system.id }}/h/{{ back|urlencode }}">← Back</a></p>
+<div class="title"><h1>{{ 'New control' if is_new else 'Edit ' ~ ctl.ref }}</h1></div>
+{% if error %}<div class="alert inv">{{ error }}</div>{% endif %}
+<form class="stack" method="post">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="back" value="{{ back }}">
+  <div><label for="description">Control</label><textarea id="description" name="description" required>{{ ctl.description or '' }}</textarea></div>
+  <div><label for="hazard_refs">Hazards</label><input type="text" id="hazard_refs" name="hazard_refs" value="{{ ctl.hazard_refs }}" required>
+    <div class="hint">Comma-separated, e.g. H-001, H-004. One control can reduce several hazards.</div></div>
+  <div class="pair">
+    <div><label for="type">Type</label>
+      <select id="type" name="type">
+        {% for t in S.CONTROL_TYPES %}<option value="{{ t }}" {{ 'selected' if ctl.type == t }}>{{ t|capitalize }}</option>{% endfor %}
+      </select>
+      <div class="hint">Listed in the standard's order of preference: design first, warnings last.</div></div>
+    <div><label for="stage">Stage</label>
+      <select id="stage" name="stage">
+        <option value="existing" {{ 'selected' if ctl.stage == 'existing' }}>Existing (counts toward initial risk)</option>
+        <option value="additional" {{ 'selected' if ctl.stage == 'additional' }}>Additional (counts toward residual risk)</option>
+      </select></div>
+  </div>
+  <div><label for="status">Status</label>
+    <select id="status" name="status">
+      {% for s in S.CONTROL_STATUSES %}<option value="{{ s }}" {{ 'selected' if ctl.status == s }}>{{ s|replace('_', ' ')|capitalize }}</option>{% endfor %}
+    </select>
+    <div class="hint">Verified means implemented and checked (DCB0129 6.3.2). Invalid means it no longer works.</div></div>
+  <div><label for="evidence">Evidence</label><textarea id="evidence" name="evidence">{{ ctl.evidence or '' }}</textarea>
+    <div class="hint">One per line: label | path or URL. E.g. "Context switch tests | tests/context_switch.test.ts". Files are hash-checked from M3.</div></div>
+  <div><label for="note">Reason for change</label><input type="text" id="note" name="note" value=""></div>
+  <div class="formactions"><button class="btn primary">{{ 'Add control' if is_new else 'Save' }}</button></div>
+</form>
+{% endblock %}

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Open Hazard Log{% endblock %}</title>
+<link rel="stylesheet" href="/static/ohl.css">
+</head>
+<body>
+<header><div class="wrap">
+  <a class="brand" href="/">Open Hazard Log</a>
+  {% if user %}
+  <nav>
+    {% if system %}
+    <a href="/s/{{ system.id }}" class="{{ 'on' if tab == 'log' }}">Log</a>
+    <a href="/s/{{ system.id }}/review" class="{{ 'on' if tab == 'review' }}">Review ({{ pending }})</a>
+    {% endif %}
+    <a href="/systems" class="{{ 'on' if tab == 'systems' }}">Systems</a>
+  </nav>
+  <span class="who">
+    <span>{{ user.name }}, {{ {'cso': 'CSO', 'contributor': 'contributor', 'viewer': 'viewer'}[user.role] }}</span>
+    <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="linkish">Log out</button></form>
+  </span>
+  {% endif %}
+</div></header>
+<main class="wrap">
+{% block main %}{% endblock %}
+</main>
+</body>
+</html>

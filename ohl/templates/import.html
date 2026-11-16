@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% set tab = 'log' %}
+{% block title %}Import · {{ system.name }}{% endblock %}
+{% block main %}
+<p class="small"><a href="/s/{{ system.id }}">← Log</a></p>
+<div class="title"><h1>Import a hazard log</h1></div>
+{% if error %}<div class="alert inv">{{ error }}</div>{% endif %}
+{% if result %}
+<div class="box"><div class="bd">
+  <p><b>Imported {{ result.hazards|length }} hazard{{ 's' if result.hazards|length != 1 }} and {{ result.controls|length }} control{{ 's' if result.controls|length != 1 }}.</b> Each one is in the audit trail with the file's hash.</p>
+  {% for w in result.warnings %}<p>Warning: {{ w }}</p>{% endfor %}
+  {% if result.ignored_columns %}<p class="faint">Columns not recognised, so not imported: {{ result.ignored_columns|join('; ') }}</p>{% endif %}
+  <a class="btn primary" href="/s/{{ system.id }}">Go to the log</a>
+</div></div>
+{% else %}
+<div class="box"><div class="bd">
+  <p>CSV or XLSX laid out like the NHS Digital hazard log template (v3.6 columns), or an OHL export. Columns are matched by their headings; anything unrecognised is listed, not guessed.</p>
+  <p class="faint">Risk ratings are recalculated from this system's matrix. If the file's risk number disagrees, you'll see a warning. Any error and nothing is imported.</p>
+  <form class="stack" method="post" enctype="multipart/form-data">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div><label for="file">File</label><input type="file" id="file" name="file" accept=".csv,.xlsx" required></div>
+    <div class="formactions"><button class="btn primary">Import</button></div>
+  </form>
+</div></div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,72 @@
+# OHL's own hazard log (SPEC.md section 10). Loaded by `ohl seed-self`.
+# Hazards are loaded UNRATED: severity and likelihood are the CSO's judgement.
+
+[system]
+name = "Open Hazard Log"
+version = "0.1.0"
+hazard_prefix = "OHL-H"
+control_prefix = "OHL-C"
+ref_width = 1
+intended_use = "Supports a Clinical Safety Officer in maintaining a DCB0129/DCB0160 hazard log. Agents and checks propose changes; only the CSO changes the log. Not used for direct patient care."
+clinical_context = "Used by clinical safety teams of health IT manufacturers and deploying organisations. A wrong or stale hazard log can lead to unsafe release or deployment decisions for the system it describes."
+
+[[hazard]]
+title = "Agent misses a clinically significant hazard; CSO treats the scan as complete"
+harm = "Unmitigated hazard in the described system reaches patients"
+causes = ["Scan coverage gaps [ai-model]", "Over-reliance on automated identification [human-factors]"]
+controls = [
+  { type = "warning", description = "Scan labelled as supplementing, never replacing, a hazard workshop" },
+  { type = "design", description = "Run summary lists which lenses ran" },
+]
+
+[[hazard]]
+title = "CSO approves an incorrect agent proposal (automation bias)"
+harm = "Wrong hazard, cause or control enters the approved log"
+causes = ["Plausible but wrong agent output [ai-model]", "Time pressure during review [human-factors]"]
+controls = [
+  { type = "design", description = "Reasoning and sources always shown open on the review screen" },
+  { type = "design", description = "Own rating required before approve; no bulk approve for hazards" },
+]
+
+[[hazard]]
+title = "Agent's suggested rating anchors the CSO's judgement"
+harm = "Risk under- or over-estimated in the approved log"
+causes = ["Suggested rating seen before the CSO forms their own [human-factors]"]
+controls = [{ type = "design", description = "Blind rating: suggestion hidden until the CSO rates" }]
+
+[[hazard]]
+title = "Checks stop running; the log looks current when it isn't"
+harm = "Stale controls relied on for release or deployment decisions"
+causes = ["Scheduler or connector failure [infrastructure]"]
+controls = [{ type = "design", description = "Freshness line with last-run times; turns red after 7 days" }]
+
+[[hazard]]
+title = "Evidence reported valid after it changed"
+harm = "Control believed verified when its evidence no longer supports it"
+causes = ["Evidence file edited or deleted after verification [software]"]
+controls = [{ type = "design", description = "SHA-256 re-hash of evidence on every check" }]
+
+[[hazard]]
+title = "Model or prompt change alters agent behaviour unnoticed"
+harm = "Silent drop in hazard identification quality"
+causes = ["Model version change [ai-model]", "Prompt edited in place [software]"]
+controls = [
+  { type = "design", description = "Versioned prompts; model that answered stored on every proposal" },
+  { type = "test", description = "Regression set of known hazards re-run on any model or prompt change" },
+]
+
+[[hazard]]
+title = "Prompt injection via ingested content manipulates proposals"
+harm = "Misleading proposals presented to the CSO"
+causes = ["Instructions hidden in docs, tickets or code comments [ai-model]"]
+controls = [
+  { type = "design", description = "Source content passed as delimited data; output schema and quote checks" },
+  { type = "design", description = "Agents have no write path to the log" },
+]
+
+[[hazard]]
+title = "Deployer never receives or actions a transferred hazard"
+harm = "Deployer-side control never put in place"
+causes = ["Hand-over by email or PDF gets lost [integration]"]
+deployer_action = "Receive the deployer-actions export and record each action in the local DCB0160 hazard log"
+controls = [{ type = "process", description = "Deployer-actions export; acknowledgement workflow planned for v2" }]

@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% set tab = 'review' %}
+{% block title %}Review · {{ system.name }}{% endblock %}
+{% block main %}
+<div class="title"><h1>Review</h1></div>
+<p class="fresh">Proposals from the agent and the checks. Nothing reaches the log until you decide.</p>
+<div class="box"><div class="empty">
+  <p><b>No proposals waiting.</b></p>
+  <p class="faint">The agent scan arrives in M2 and the evidence and code checks in M3.</p>
+</div></div>
+{% endblock %}

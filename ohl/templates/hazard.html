@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "macros.html" import rating %}
+{% set tab = 'log' %}
+{% block title %}{{ h.ref }} · {{ system.name }}{% endblock %}
+{% block main %}
+<p class="small"><a href="/s/{{ system.id }}">← Log</a></p>
+<div class="title">
+  <h1>{{ h.ref }} · {{ h.title }}</h1>
+  {% if user.role == 'cso' %}<div class="actions"><a class="btn" href="/s/{{ system.id }}/h/{{ h.ref|urlencode }}/edit">Edit</a></div>{% endif %}
+</div>
+<p class="fresh">{{ h.status|capitalize }} · Owner {{ h.owner or '–' }} · Added {{ h.created_at }} · Last reviewed {{ h.last_reviewed or 'never' }} · Review due {{ h.review_due or '–' }} · Version {{ h.version }}</p>
+
+<div class="split">
+  <div class="box"><div class="bd">
+    <dl>
+      {% if h.description %}<dt>Description</dt><dd class="pre">{{ h.description }}</dd>{% endif %}
+      <dt>Causes</dt><dd>{% for c in h.causes %}{{ c.text }}{% if c.category %} [{{ c.category }}]{% endif %}{% if c.paths %}<br><span class="faint small">↳ {{ c.paths|join(', ') }}</span>{% endif %}{% if not loop.last %}<br>{% endif %}{% else %}<span class="faint">–</span>{% endfor %}</dd>
+      <dt>Effect</dt><dd class="pre">{{ h.effects or '–' }}</dd>
+      <dt>Harm</dt><dd class="pre">{{ h.harm or '–' }}</dd>
+      <dt>Initial</dt><dd>{{ rating(scheme, h.initial_severity, h.initial_likelihood, h.initial_risk, h.initial_justification) }}</dd>
+      <dt>Residual</dt><dd>{{ rating(scheme, h.residual_severity, h.residual_likelihood, h.residual_risk, h.residual_justification) }}</dd>
+      {% if h.action %}<dt>Action</dt><dd class="pre">{{ h.action }}</dd>{% endif %}
+      <dt>Deployer</dt><dd class="pre">{{ h.deployer_action or '–' }}</dd>
+    </dl>
+  </div></div>
+
+  <div>
+    <div class="box">
+      <div class="hd"><h3>Controls and evidence</h3>{% if user.role == 'cso' %}<a class="act" href="/s/{{ system.id }}/c/new?hazard={{ h.ref|urlencode }}">Add control</a>{% endif %}</div>
+      <div class="bd">
+        {% for c in controls %}
+        <div class="ev">
+          <span class="nowrap">{% if user.role == 'cso' %}<a href="/s/{{ system.id }}/c/{{ c.ref|urlencode }}/edit?back={{ h.ref|urlencode }}">{{ c.ref }}</a>{% else %}{{ c.ref }}{% endif %}</span>
+          <span>{{ c.type|capitalize }}{% if c.stage == 'existing' %} (existing){% endif %}: {{ c.description }}{% if c.hazard_refs|length > 1 %} <span class="faint small">also {{ c.hazard_refs|reject('equalto', h.ref)|join(', ') }}</span>{% endif %}</span>
+          <span class="r">{% if c.status == 'invalid' %}<span class="tag warn">invalid</span>{% else %}[{{ c.status|replace('_', ' ') }}]{% endif %}</span>
+        </div>
+        {% for e in c.evidence %}
+        <div class="ev"><span class="faint">  ↳</span><span>{{ e.label }}{% if e.path_or_url %} <span class="faint">{{ e.path_or_url }}</span>{% endif %}</span><span class="r faint">{{ e.state }}</span></div>
+        {% endfor %}
+        {% else %}
+        <p class="faint" style="margin:0">No controls yet.</p>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="box">
+      <div class="hd"><h3>History</h3></div>
+      <div class="bd"><ul class="hist">
+        {% for e in history %}<li>{{ e.at|day }} · {{ e.who }} · {{ e.what }}{% if e.note %} <span class="faint">({{ e.note }})</span>{% endif %}</li>{% endfor %}
+      </ul></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

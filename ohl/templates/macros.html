@@ -1,0 +1,41 @@
+{% macro risk_cell(scheme, initial, residual) -%}
+{% if not initial and not residual %}<span class="faint">not rated</span>
+{% else %}<span class="risk">{{ initial or '–' }} → <b>{{ residual or '–' }}</b> <span class="bl" aria-hidden="true">{{ risk.blocks(residual) }}</span></span>{% endif %}
+{%- endmacro %}
+
+{% macro rating(scheme, sev, lik, r, just) -%}
+{% if r %}
+<span class="risk"><b>{{ r }}</b> <span class="bl" aria-hidden="true">{{ risk.blocks(r) }}</span> {{ risk.short(scheme, r) }}</span><br>
+<span class="faint">{{ risk.label(scheme, sev) }} × {{ risk.label(scheme, lik) }}</span>
+{% if just %}<div class="pre small">{{ just }}</div>{% endif %}
+{% else %}<span class="faint">Not rated</span>{% endif %}
+{%- endmacro %}
+
+{% macro freshness(system, last_issue, pending, verdict, changes) -%}
+<p class="fresh">
+  {% if last_issue %}Working draft. Last issued <b>v{{ last_issue.number }}, {{ last_issue.issued_at|day }}</b>{% if changes %} · <b>{{ changes }}</b> change{{ 's' if changes != 1 }} since{% endif %}
+  {% else %}Working draft. <b>Never issued</b>{% endif %}
+  · Last scan <b>never</b> · Last checks <b>never</b>
+  · <b>{{ pending }}</b> proposal{{ 's' if pending != 1 }} waiting
+  · Audit chain {% if verdict.ok %}<b>intact</b>{% else %}<span class="tag warn">BROKEN at event {{ verdict.bad_seq }}</span>{% endif %}
+</p>
+{%- endmacro %}
+
+{% macro scheme_help(scheme) -%}
+<details class="help">
+  <summary>What the ratings mean ({{ scheme.name }})</summary>
+  <div class="tablebox" style="margin-top:8px">
+  <table class="matrix">
+    <thead><tr><th>Likelihood ↓ / Severity →</th>{% for s in scheme.severities %}<th>{{ scheme.labels[s] }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for l in scheme.likelihoods|reverse %}<tr><td>{{ scheme.labels[l] }}</td>{% for v in scheme.matrix[l] %}<td>{{ v }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+  </table>
+  </div>
+  <table style="margin-top:8px"><tbody>
+    {% for k in ['5','4','3','2','1'] %}<tr><td class="nowrap"><b>{{ k }}</b></td><td>{{ scheme.acceptability[k] }}</td></tr>{% endfor %}
+  </tbody></table>
+  <table style="margin-top:8px"><tbody>
+    {% for s in scheme.severities %}<tr><td class="nowrap"><b>{{ scheme.labels[s] }}</b></td><td>{{ scheme.severity_help[s] }}</td></tr>{% endfor %}
+    {% for l in scheme.likelihoods %}<tr><td class="nowrap"><b>{{ scheme.labels[l] }}</b></td><td>{{ scheme.likelihood_help[l] }}</td></tr>{% endfor %}
+  </tbody></table>
+</details>
+{%- endmacro %}

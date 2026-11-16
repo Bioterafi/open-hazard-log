@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "macros.html" import scheme_help %}
+{% set tab = 'log' %}
+{% block title %}System details · {{ system.name }}{% endblock %}
+{% block main %}
+<p class="small"><a href="/s/{{ system.id }}">← Log</a></p>
+<div class="title"><h1>System details</h1></div>
+{% if error %}<div class="alert inv">{{ error }}</div>{% endif %}
+{% if saved %}<div class="alert">Saved.</div>{% endif %}
+{% set ro = user.role != 'cso' %}
+<form class="stack" method="post">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="pair">
+    <div><label for="name">Name</label><input type="text" id="name" name="name" value="{{ system.name }}" {{ 'disabled' if ro }} required></div>
+    <div><label for="version">Version</label><input type="text" id="version" name="version" value="{{ system.version }}" {{ 'disabled' if ro }}></div>
+  </div>
+  <div><label for="intended_use">Intended use</label><textarea id="intended_use" name="intended_use" {{ 'disabled' if ro }}>{{ system.intended_use }}</textarea></div>
+  <div><label for="clinical_context">Clinical context</label><textarea id="clinical_context" name="clinical_context" {{ 'disabled' if ro }}>{{ system.clinical_context }}</textarea></div>
+  <fieldset>
+    <legend>Sources (used by the scan and checks)</legend>
+    <div><label for="repo">Git repository path</label><input type="text" id="repo" name="repo" value="{{ system.sources.repo or '' }}" {{ 'disabled' if ro }}>
+      <div class="hint">Local path. Issued versions record its current commit.</div></div>
+    <div><label for="docs">Doc folders</label><input type="text" id="docs" name="docs" value="{{ (system.sources.docs or [])|join(', ') }}" {{ 'disabled' if ro }}>
+      <div class="hint">Comma-separated folders of Markdown specs and workflows.</div></div>
+    <label class="check"><input type="checkbox" name="no_pid_confirmed" {{ 'checked' if system.no_pid_confirmed }} {{ 'disabled' if ro }}>
+      <span>I confirm these sources contain no patient-identifiable data. The scan won't run until this is ticked.</span></label>
+  </fieldset>
+  {% if not ro %}<div class="formactions"><button class="btn primary">Save</button></div>{% endif %}
+</form>
+
+<div class="box" style="margin-top:28px">
+  <div class="hd"><h3>Risk scheme</h3></div>
+  <div class="bd">
+    <p>{{ scheme.name }}</p>
+    <p class="faint small">Copied into this system when it was created. Set your own in your Clinical Risk Management Plan (DCB0129 3.2.1); editing it here comes later.</p>
+    {{ scheme_help(scheme) }}
+  </div>
+</div>
+{% endblock %}

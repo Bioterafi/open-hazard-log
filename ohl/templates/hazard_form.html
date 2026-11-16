@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "macros.html" import scheme_help %}
+{% set tab = 'log' %}
+{% block title %}{{ 'New hazard' if is_new else 'Edit ' ~ h.ref }} · {{ system.name }}{% endblock %}
+{% block main %}
+<p class="small"><a href="/s/{{ system.id }}{% if not is_new %}/h/{{ h.ref|urlencode }}{% endif %}">← Back</a></p>
+<div class="title"><h1>{{ 'New hazard' if is_new else 'Edit ' ~ h.ref }}</h1></div>
+{% if error %}<div class="alert inv">{{ error }}</div>{% endif %}
+
+{% macro sel(name, options, value, blank) -%}
+<select id="{{ name }}" name="{{ name }}">
+  <option value="">{{ blank }}</option>
+  {% for o in options %}<option value="{{ o }}" {{ 'selected' if value == o }}>{{ scheme.labels[o] }}</option>{% endfor %}
+</select>
+{%- endmacro %}
+
+<form class="stack" method="post">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div><label for="title">Hazard</label><input type="text" id="title" name="title" value="{{ h.title or '' }}" required>
+    <div class="hint">Short, harm-framed. E.g. "Results shown against the wrong patient after switching patient context".</div></div>
+  <div><label for="description">Description</label><textarea id="description" name="description">{{ h.description or '' }}</textarea></div>
+  <div><label for="causes">Possible causes</label><textarea id="causes" name="causes">{{ causes_text }}</textarea>
+    <div class="hint">One per line: text [category] {code paths}. Category: {{ S.CATEGORIES|join(', ') }}. Paths link the cause to code for re-review checks.</div></div>
+  <div class="pair">
+    <div><label for="effects">Effect</label><textarea id="effects" name="effects">{{ h.effects or '' }}</textarea></div>
+    <div><label for="harm">Harm</label><textarea id="harm" name="harm">{{ h.harm or '' }}</textarea></div>
+  </div>
+
+  <fieldset>
+    <legend>Initial risk (with existing controls)</legend>
+    <div class="pair">
+      <div><label for="initial_severity">Severity</label>{{ sel('initial_severity', scheme.severities, h.initial_severity, 'Not rated') }}</div>
+      <div><label for="initial_likelihood">Likelihood</label>{{ sel('initial_likelihood', scheme.likelihoods, h.initial_likelihood, 'Not rated') }}</div>
+    </div>
+    <div><label for="initial_justification">Justification</label><textarea id="initial_justification" name="initial_justification">{{ h.initial_justification or '' }}</textarea></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Residual risk (with additional controls)</legend>
+    <div class="pair">
+      <div><label for="residual_severity">Severity</label>{{ sel('residual_severity', scheme.severities, h.residual_severity, 'Not rated') }}</div>
+      <div><label for="residual_likelihood">Likelihood</label>{{ sel('residual_likelihood', scheme.likelihoods, h.residual_likelihood, 'Not rated') }}</div>
+    </div>
+    <div><label for="residual_justification">Justification</label><textarea id="residual_justification" name="residual_justification">{{ h.residual_justification or '' }}</textarea></div>
+  </fieldset>
+  {{ scheme_help(scheme) }}
+
+  <div class="pair">
+    <div><label for="status">Status</label>
+      <select id="status" name="status">
+        {% for s in S.STATUSES %}<option value="{{ s }}" {{ 'selected' if (h.status or 'open') == s }}>{{ s|capitalize }}</option>{% endfor %}
+      </select>
+      <div class="hint">Transferred: your actions are done, the deployer's are not.</div></div>
+    <div><label for="owner">Owner</label><input type="text" id="owner" name="owner" value="{{ h.owner or '' }}"></div>
+  </div>
+  <div><label for="deployer_action">Deployer action</label><textarea id="deployer_action" name="deployer_action">{{ h.deployer_action or '' }}</textarea>
+    <div class="hint">What the deploying organisation must do. Appears in the deployer-actions export.</div></div>
+  <div><label for="action">Action</label><textarea id="action" name="action">{{ h.action or '' }}</textarea></div>
+  <div class="pair">
+    <div><label for="last_reviewed">Last reviewed</label><input type="date" id="last_reviewed" name="last_reviewed" value="{{ h.last_reviewed or '' }}"></div>
+    <div><label for="review_due">Review due</label><input type="date" id="review_due" name="review_due" value="{{ h.review_due or '' }}"></div>
+  </div>
+  <div><label for="note">Reason for change</label><input type="text" id="note" name="note" value="">
+    <div class="hint">Optional. Saved in the audit trail.</div></div>
+  <div class="formactions"><button class="btn primary">{{ 'Add hazard' if is_new else 'Save' }}</button></div>
+</form>
+{% endblock %}
