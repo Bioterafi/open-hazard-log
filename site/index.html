@@ -37,11 +37,15 @@ header { padding: 32px 0 0; }
 
 h1 { font: 400 clamp(38px, 6vw, 56px)/1.08 var(--serif); letter-spacing: -0.022em; margin: 112px 0 28px; }
 .lede { font-size: 20px; line-height: 1.6; color: var(--ink-2); margin: 0; }
-.src { margin: 24px 0 0; font-size: 16px; }
+.src { margin: 28px 0 0; }
+.star { display: inline-flex; align-items: center; gap: 9px; padding: 10px 18px; border-radius: 999px;
+  background: var(--ink); color: var(--page); font: 500 15px/1 var(--sans); text-decoration: none; }
+.star:hover { background: var(--ink-2); }
+.star svg { flex: none; }
 pre { margin: 20px 0 0; padding: 16px 18px; background: #f0eee6; border-radius: 10px; overflow-x: auto;
   font: 13.5px/1.7 ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink-2); }
 
-figure { margin: 88px auto 0; }
+figure.wide { margin-top: 88px; margin-bottom: 0; }
 figure img { display: block; width: 100%; height: auto; border-radius: 14px; border: 1px solid var(--line); }
 figcaption { font-size: 14px; color: var(--faint); margin-top: 12px; }
 
@@ -71,7 +75,7 @@ footer { margin: 120px 0 0; padding: 28px 0 48px; border-top: 1px solid var(--li
   .col, .wide { padding: 0 20px; }
   h1 { margin-top: 72px; }
   .lede { font-size: 18.5px; }
-  figure { margin-top: 56px; }
+  figure.wide { margin-top: 56px; }
   section { margin-top: 72px; }
   h2 { font-size: 26px; }
   th { white-space: normal; width: 34%; }
@@ -88,7 +92,7 @@ footer { margin: 120px 0 0; padding: 28px 0 48px; border-top: 1px solid var(--li
   <div class="col">
     <h1>A hazard log that keeps up with the product it describes.</h1>
     <p class="lede">Open Hazard Log is an open-source tool for Clinical Safety Officers working to DCB0129 and DCB0160. An agent reads your specifications and code and suggests hazards, quoting its sources. Simple checks notice when the evidence behind a control changes. Nothing enters the log until you approve it.</p>
-    <p class="src"><a href="https://github.com/Bioterafi/open-hazard-log">Source on GitHub</a></p>
+    <p class="src"><a class="star" href="https://github.com/Bioterafi/open-hazard-log"><svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>Star on GitHub</span></a></p>
   </div>
 
   <figure class="wide">
