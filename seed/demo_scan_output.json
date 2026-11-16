@@ -1,0 +1,92 @@
+{
+  "lenses_run": ["workflow", "failure_modes", "human_factors"],
+  "not_proposed_summary": "Two lower-severity display issues (column truncation on small tablets, date format ambiguity) were left out to keep within the limit.",
+  "candidates": [
+    {
+      "lens": "workflow",
+      "modifies": "",
+      "title": "Children's results compared with adult reference ranges, so abnormal values are not highlighted",
+      "description": "The viewer is used for all inpatients, but abnormal values are judged against the adult range table only. A child's abnormal result can therefore appear normal on the ward round.",
+      "causes": [{"text": "Reference ranges come only from the adult range table", "category": "software", "paths": []}],
+      "effects": "Abnormal paediatric result shown without highlighting",
+      "harm": "Delayed treatment of a child, e.g. missed hypoglycaemia or hyperkalaemia",
+      "controls": [
+        {"type": "design", "description": "Age-banded reference ranges selected from the patient's age"},
+        {"type": "test", "description": "Test cases for paediatric results at range boundaries"},
+        {"type": "process", "description": "Until fixed, hide range highlighting for under-16s and show a banner"}
+      ],
+      "suggested_severity": "major",
+      "suggested_likelihood": "medium",
+      "rating_rationale": "A missed abnormal result in a child can cause serious harm; children are admitted to this Trust's wards, so it will happen whenever one is reviewed here.",
+      "reasoning": "The intended use covers all inpatients, which includes children, and the workflow says highlighting relies on the adult range table. Nothing in the documents describes paediatric ranges.",
+      "assumptions": "Assumed children are admitted to wards where this viewer is used, and that there is no separate paediatric results system.",
+      "citations": [
+        {"path": "demo_docs/intended-use.md", "quote": "reviewing results for all inpatients across the Trust"},
+        {"path": "demo_docs/results-review.md", "quote": "Reference ranges come from the adult range table."}
+      ],
+      "confidence": "medium"
+    },
+    {
+      "lens": "human_factors",
+      "modifies": "",
+      "title": "Result acknowledged by one clinician disappears for everyone, so another clinician never sees it",
+      "description": "Acknowledging a result removes it from a list shared by everyone on the ward. If it is acknowledged by mistake, or by someone without the full picture, others lose sight of it.",
+      "causes": [
+        {"text": "Acknowledge removes the result from a shared ward list", "category": "software", "paths": []},
+        {"text": "Mis-tap on a tablet during a busy round", "category": "human-factors", "paths": []}
+      ],
+      "effects": "Abnormal result no longer visible to the team",
+      "harm": "Abnormal result not acted on",
+      "controls": [
+        {"type": "design", "description": "Show acknowledged results in a separate 'acknowledged today' list with who acknowledged them"},
+        {"type": "design", "description": "Undo for five minutes after Acknowledge"},
+        {"type": "training", "description": "Ward round briefing on what Acknowledge means"}
+      ],
+      "suggested_severity": "considerable",
+      "suggested_likelihood": "medium",
+      "rating_rationale": "Shared lists on tablets during busy rounds make accidental acknowledgement plausible; the harm is a delayed response to an abnormal result.",
+      "reasoning": "The workflow states that acknowledged results drop off a list shared by everyone on the ward, with no mention of who acknowledged them or of undo.",
+      "assumptions": "Assumed acknowledgement is not reversible in the current design.",
+      "citations": [
+        {"path": "demo_docs/results-review.md", "quote": "Acknowledged results drop off the list. The list is shared by everyone logged in on that ward."}
+      ],
+      "confidence": "high"
+    },
+    {
+      "lens": "failure_modes",
+      "modifies": "H-004",
+      "title": "Results arriving mid-round are missed because the list refreshes only every five minutes",
+      "description": "Adds a cause to H-004: results that arrive after the round starts may not appear for up to five minutes.",
+      "causes": [{"text": "List refreshes only every five minutes during the round", "category": "software", "paths": []}],
+      "effects": "Clinician finishes the round without seeing a newly arrived result",
+      "harm": "Decision made on out-of-date results",
+      "controls": [{"type": "design", "description": "Push new results to the open list as they arrive, with a 'new since you opened' marker"}],
+      "suggested_severity": "major",
+      "suggested_likelihood": "low",
+      "rating_rationale": "Same harm as H-004; a five-minute gap during a round is a realistic window.",
+      "reasoning": "H-004 covers interface backlogs but not the viewer's own refresh interval, which the workflow document states.",
+      "assumptions": "None",
+      "citations": [
+        {"path": "demo_docs/results-review.md", "quote": "the list refreshes every five minutes"}
+      ],
+      "confidence": "medium"
+    },
+    {
+      "lens": "failure_modes",
+      "modifies": "",
+      "title": "Dose calculated from a stale weight",
+      "description": "The viewer may calculate doses from an out-of-date weight.",
+      "causes": [{"text": "Weight not refreshed", "category": "data", "paths": []}],
+      "effects": "Wrong dose shown",
+      "harm": "Overdose",
+      "controls": [{"type": "design", "description": "Show weight date next to any dose"}],
+      "suggested_severity": "major",
+      "suggested_likelihood": "low",
+      "rating_rationale": "Illustrates a candidate whose quote cannot be verified.",
+      "reasoning": "This candidate cites text that is not in the documents; the quote check hides it.",
+      "assumptions": "None",
+      "citations": [{"path": "demo_docs/intended-use.md", "quote": "calculates doses from the latest recorded weight"}],
+      "confidence": "high"
+    }
+  ]
+}

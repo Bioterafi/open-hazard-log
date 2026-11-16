@@ -37,7 +37,7 @@ def test_only_cso_changes_the_log(conn, viewer, populated):
 
 def test_cso_needs_registration(conn):
     with pytest.raises(S.Invalid):
-        S.add_user(conn, email="a@b.c", name="A", role="cso", password="x" * 12, actor="cli:test")
+        S.add_user(conn, email="a@b.c", name="A", role="cso", actor="cli:test")
 
 
 def test_every_change_is_an_event_and_versioned(conn, cso, populated):

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "macros.html" import scheme_help %}
+{% set tab = 'review' %}
+{% block title %}Edit {{ p.label }} · {{ system.name }}{% endblock %}
+{% block main %}
+<p class="small"><a href="/s/{{ system.id }}/review/{{ p.id }}">← Back to {{ p.label }}</a></p>
+<div class="title"><h1>Edit and approve {{ p.label }}</h1></div>
+<p class="fresh">{% if target %}Adds to {{ target.ref }}: {{ target.title }}. Only new causes and controls are added.{% else %}Your version goes into the log; the audit trail keeps the agent's version alongside it.{% endif %}</p>
+{% if error %}<div class="alert inv">{{ error }}</div>{% endif %}
+<form class="stack" method="post">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  {% if not target %}
+  <div><label for="title">Hazard</label><input type="text" id="title" name="title" value="{{ f.title }}" required></div>
+  <div><label for="description">Description</label><textarea id="description" name="description">{{ f.description }}</textarea></div>
+  {% endif %}
+  <div><label for="causes">Causes</label><textarea id="causes" name="causes">{{ f.causes }}</textarea>
+    <div class="hint">One per line: text [category] {code paths}.</div></div>
+  <div class="pair">
+    <div><label for="effects">Effect</label><textarea id="effects" name="effects">{{ f.effects }}</textarea></div>
+    <div><label for="harm">Harm</label><textarea id="harm" name="harm">{{ f.harm }}</textarea></div>
+  </div>
+  {% if p.kind == 'new_hazard' %}
+  <fieldset>
+    <legend>Initial risk</legend>
+    <div class="pair">
+      <div><label for="initial_severity">Severity</label><select id="initial_severity" name="initial_severity">{% for s in scheme.severities %}<option value="{{ s }}" {{ 'selected' if f.initial_severity == s }}>{{ scheme.labels[s] }}</option>{% endfor %}</select></div>
+      <div><label for="initial_likelihood">Likelihood</label><select id="initial_likelihood" name="initial_likelihood">{% for l in scheme.likelihoods %}<option value="{{ l }}" {{ 'selected' if f.initial_likelihood == l }}>{{ scheme.labels[l] }}</option>{% endfor %}</select></div>
+    </div>
+    <div><label for="initial_justification">Justification</label><textarea id="initial_justification" name="initial_justification">{{ f.initial_justification }}</textarea></div>
+    <div class="hint">Starts from your blind rating ({{ risk.label(scheme, p.cso_rating.severity) }} × {{ risk.label(scheme, p.cso_rating.likelihood) }}). Both are kept in the audit trail.</div>
+  </fieldset>
+  {{ scheme_help(scheme) }}
+  {% endif %}
+  <div><label for="controls">Controls</label><textarea id="controls" name="controls">{{ f.controls }}</textarea>
+    <div class="hint">One per line: type: description. Types: {{ S.CONTROL_TYPES|join(', ') }}. They're added as proposed controls.</div></div>
+  <div class="formactions"><button class="btn primary">Approve with edits</button></div>
+</form>
+{% endblock %}

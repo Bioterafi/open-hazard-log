@@ -211,6 +211,7 @@ Each lens covers normal use and fault conditions (DCB0129 4.3.1).
 - Server-side fallback on refusal enabled (`fallbacks: "default"`). Because the answering model can then differ, store **`response.model` as `model_used`**, not the requested model.
 - The API no longer takes `temperature`, so runs are not bit-for-bit repeatable. Reproducibility means: store `prompt_version`, `model_used`, and a SHA-256 of the exact inputs on every proposal, and keep a small regression set of known hazards (§10, OHL-H6) to re-run when either changes.
 - Prompts live in `prompts/scan_v1.md`. Changing a prompt means a new file and a new version string, never an edit in place.
+- `ohl scan --replay <saved output>` runs the whole pipeline (inputs, quote check, proposals) without a model call, recorded as `replay:<file>`. Used for the demo and for offline regression checks (OHL-H6).
 
 ---
 
@@ -237,13 +238,15 @@ URL evidence (e.g. a training record in another system) is not fetched in v1; it
 | **Approve** | For new hazards and any rating change: enabled only after the CSO enters their own severity and likelihood. The agent's suggestion is then shown next to theirs. |
 | **Edit** | Opens the payload as a form; the CSO's edits are stored as a diff in the event. |
 | **Reject** | Reason required: picklist (duplicate · not a hazard · out of scope · wrong context · already controlled · other) plus free text. |
-| **Ask someone** | Assigns to a named user with a question; stays pending. |
+| **Ask someone** | Assigns to a named user with a question; stays pending. *(Not built in M2.)* |
 | **Bulk approve** | Only for `evidence_problem` items where the CSO has re-confirmed the evidence. Never for new hazards or ratings. |
 | **Issue version** | CSO only, from the Log page. Shows what changed since the last issued version and how many proposals are still pending, then asks for a note. Saves a numbered snapshot with the CSO's name and registration, the time, the repo commit and the audit chain head. This is the DCB0129 3.3.2 approval. |
 
 Reasoning, assumptions and citations are shown open on the same screen, not behind a click. Time on each proposal is recorded for later metrics.
 
-**Roles:** `cso` (everything) · `contributor` (add evidence, answer questions, run scans/checks) · `viewer` (read and export). Local accounts with hashed passwords in v1. A deployment may have more than one CSO, but every approval names the individual.
+**Roles:** `cso` (everything) · `contributor` (add evidence, answer questions, run scans/checks) · `viewer` (read and export).
+
+**No login in v1** (changed 16 Nov 2026 at the owner's request). The app runs on one computer as one named user, set with `ohl serve --as` (default: the only CSO). Every change is still attributed to that named person. Because anyone who can reach the app acts as that user, it only listens on 127.0.0.1, and `ohl serve` refuses any other address. Form tokens still guard against other websites posting to it. Shared or hosted use needs real sign-in first (SSO, later).
 
 ---
 
@@ -259,29 +262,23 @@ Three pages. Nothing else.
 
 Settings (system details, sources, users, risk matrix) is a plain form page linked from the user menu.
 
-**Reference mockup:** [design/mockup.html](design/mockup.html). The build copies its CSS.
+**Style** — the anthropic.com design scheme (16 Nov 2026, at the owner's request): warm ivory, serif titles, sans text, rounded panels, pill buttons. Style only: no Anthropic logos, names or brand fonts. The source of truth is `ohl/static/ohl.css`; `design/mockup.html` shows an earlier typewriter design and is superseded.
 
-**Style** — black and white, typewriter. Like a typed safety file.
+| Token | Value | Use |
+|---|---|---|
+| `--page` | `#faf9f5` | page (ivory; no dark mode) |
+| `--panel` / `--panel-2` | `#f5f4ed` / `#f0eee6` | cards and tables / hover and selected |
+| `--line` / `--line-2` | `#e8e6dc` / `#dedcd1` | hairlines on the page / on panels |
+| `--ink` / `--ink-2` | `#141413` / `#3d3d3a` | text and primary button / button text |
+| `--faint` | `#5e5d59` | secondary text |
+| `--clay` | `#d97757` | focus ring and the "+" on proposed text only |
+| `--r1`…`--r5` | olive → oat → clay → coral → fig tints | risk pill backgrounds |
 
-| Token | Light | Dark | Use |
-|---|---|---|---|
-| `--paper` | `#FFFFFF` | `#000000` | page |
-| `--ink` | `#000000` | `#FFFFFF` | text, rules, borders, primary button |
-| `--faint` | `#595959` | `#A6A6A6` | secondary text only (7:1 contrast) |
-
-- **No other colours.** Dark mode just swaps paper and ink.
-- **One typeface:** Courier Prime (SIL Open Font License), bundled locally because some NHS networks block Google Fonts. Falls back to Courier New, then the system monospace.
-- **Headings:** bold. Small section headings are uppercase with letter-spacing.
-- **Lines:** square corners, no shadows. 2px solid rules under headers, 1px boxes, dashed rules between rows.
-- **Emphasis without colour:**
-  - **Risk** is shown as number, blocks and word, e.g. `4 → 2 ■■□□□ acceptable where impractical`. In the log it's one column, initial → **residual**.
-  - **Alerts** (evidence missing) are inverted: white text on black.
-  - **The selected item and the primary button** are inverted.
-  - **The active tab** is underlined.
-  - **Proposed text** is prefixed `+`.
-  - **Status labels** sit in brackets: `[verified]`, `[software]`, `[quote found]`.
-- **Restraint:** one primary button per screen. No charts, no animation, no icons beyond `↳` and `→`.
-- Works at phone width (tables scroll sideways inside their box).
+- **Type:** page titles in Source Serif 4 (weight 400, slightly tight letter spacing), everything else in DM Sans, file paths in the system monospace. Both fonts are free stand-ins for anthropic.com's own typefaces and load from Google Fonts. Where that's blocked, the fallbacks are Georgia and the system sans. Bundling them locally is still to do.
+- **Shapes:** 16px-radius panels with no borders, hairline rows inside, pill-shaped buttons and tags, and one dark pill for the main action on each screen.
+- **Risk:** a tinted pill that always shows the number. The Hazard and Review pages add the word, e.g. `3 undesirable`. The log column reads initial → residual, with the meaning in the legend and on hover. Colour is never the only signal.
+- **Problems** (evidence missing, overdue, quote not found) get a soft clay-tinted tag. No red.
+- **Restraint:** no charts, no animation, no icons beyond `↳` and `→`. Works at phone width; tables scroll sideways inside their panel.
 
 ---
 
@@ -317,7 +314,7 @@ OHL is safety-relevant software, so it ships with its own log as the first syste
 One language, one process, one database file.
 
 - **Python 3.12**, **FastAPI** + **Jinja2** server-rendered pages (plain HTML forms, no JS build), **SQLite** (stdlib `sqlite3`), **anthropic** SDK, **openpyxl** for XLSX.
-- Run: `uv run ohl serve` (web), `ohl scan`, `ohl check`, `ohl export`, `ohl verify`, `ohl import`.
+- Run: `uv run ohl serve --as you@…` (web, this computer only), `ohl scan`, `ohl check`, `ohl export`, `ohl verify`, `ohl import`.
 
 ```
 ohl/
@@ -345,7 +342,7 @@ tests/
 | Step | Builds | Done when |
 |---|---|---|
 | **M1 Log** ✓ built 16 Nov 2026 | Tables, audit chain, risk matrix config, Log + Hazard pages, manual add/edit, import, export, Issue version. | An existing hazard log can be imported, edited, issued as v1 and exported in template v3.6 columns; `ohl verify` passes; tampering with one event row makes it fail. |
-| **M2 Scan + Review** | Agent, quote check, Review page, blind rating. | A scan of a real repo yields ≤15 proposals, every shown quote is verified, and approve/edit/reject each leave the right event. |
+| **M2 Scan + Review** ✓ built 16 Nov 2026 (real-repo scan not yet run) | Agent, quote check, Review page, blind rating. | A scan of a real repo yields ≤15 proposals, every shown quote is verified, and approve/edit/reject each leave the right event. |
 | **M3 Checks** | Evidence hashing, git-diff re-review, overdue, freshness line. | Deleting a linked test file and changing a linked source file each produce the right proposal on the next `ohl check`. |
 | **M4 Pilot** | Run on one real product alongside its human-built log. | Approval/edit/reject rates and CSO minutes per proposal recorded; hazards found only by the agent listed. |
 

@@ -22,6 +22,13 @@
       <div class="hint">Local path. Issued versions record its current commit.</div></div>
     <div><label for="docs">Doc folders</label><input type="text" id="docs" name="docs" value="{{ (system.sources.docs or [])|join(', ') }}" {{ 'disabled' if ro }}>
       <div class="hint">Comma-separated folders of Markdown specs and workflows.</div></div>
+    <div><label for="code_globs">Code to read</label><input type="text" id="code_globs" name="code_globs" value="{{ (system.sources.code_globs or [])|join(', ') }}" {{ 'disabled' if ro }}>
+      <div class="hint">Comma-separated patterns, e.g. src/results/*.ts, src/alerts/*. The scan always sees the file list; it reads only these files. Empty: docs only.</div></div>
+    <div class="pair">
+      <div><label for="max_proposals">Most proposals per scan</label><input type="text" id="max_proposals" name="max_proposals" value="{{ system.sources.max_proposals or 15 }}" {{ 'disabled' if ro }}></div>
+      <div><label class="check" style="margin-top:24px"><input type="checkbox" name="uses_ai" {{ 'checked' if system.sources.uses_ai }} {{ 'disabled' if ro }}>
+        <span>Contains AI or machine-learning components (adds the AI-specific lens)</span></label></div>
+    </div>
     <label class="check"><input type="checkbox" name="no_pid_confirmed" {{ 'checked' if system.no_pid_confirmed }} {{ 'disabled' if ro }}>
       <span>I confirm these sources contain no patient-identifiable data. The scan won't run until this is ticked.</span></label>
   </fieldset>

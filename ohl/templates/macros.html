@@ -1,21 +1,21 @@
 {% macro risk_cell(scheme, initial, residual) -%}
 {% if not initial and not residual %}<span class="faint">not rated</span>
-{% else %}<span class="risk">{{ initial or '–' }} → <b>{{ residual or '–' }}</b> <span class="bl" aria-hidden="true">{{ risk.blocks(residual) }}</span></span>{% endif %}
+{% else %}<span class="faint">{{ initial or '–' }}</span><span class="arrow">→</span>{% if residual %}<span class="risk r{{ residual }}" title="Residual {{ residual }}: {{ risk.acceptability(scheme, residual) }}"><b>{{ residual }}</b></span>{% else %}<span class="faint">not rated</span>{% endif %}{% endif %}
 {%- endmacro %}
 
 {% macro rating(scheme, sev, lik, r, just) -%}
 {% if r %}
-<span class="risk"><b>{{ r }}</b> <span class="bl" aria-hidden="true">{{ risk.blocks(r) }}</span> {{ risk.short(scheme, r) }}</span><br>
+<span class="risk r{{ r }}" title="{{ risk.acceptability(scheme, r) }}"><b>{{ r }}</b> {{ risk.short(scheme, r) }}</span><br>
 <span class="faint">{{ risk.label(scheme, sev) }} × {{ risk.label(scheme, lik) }}</span>
 {% if just %}<div class="pre small">{{ just }}</div>{% endif %}
 {% else %}<span class="faint">Not rated</span>{% endif %}
 {%- endmacro %}
 
-{% macro freshness(system, last_issue, pending, verdict, changes) -%}
+{% macro freshness(system, last_issue, pending, verdict, changes, last_scan=None) -%}
 <p class="fresh">
   {% if last_issue %}Working draft. Last issued <b>v{{ last_issue.number }}, {{ last_issue.issued_at|day }}</b>{% if changes %} · <b>{{ changes }}</b> change{{ 's' if changes != 1 }} since{% endif %}
   {% else %}Working draft. <b>Never issued</b>{% endif %}
-  · Last scan <b>never</b> · Last checks <b>never</b>
+  · Last scan <b>{{ last_scan.at|day if last_scan else 'never' }}</b> · Last checks <b>never</b>
   · <b>{{ pending }}</b> proposal{{ 's' if pending != 1 }} waiting
   · Audit chain {% if verdict.ok %}<b>intact</b>{% else %}<span class="tag warn">BROKEN at event {{ verdict.bad_seq }}</span>{% endif %}
 </p>

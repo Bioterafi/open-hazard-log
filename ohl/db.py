@@ -141,6 +141,22 @@ CREATE TRIGGER IF NOT EXISTS issue_no_delete BEFORE DELETE ON issue
 """
 
 
+# Columns added after a table was first released. Applied on connect when missing.
+MIGRATIONS = [
+    ("proposal", "cso_rating", "TEXT NOT NULL DEFAULT '{}'"),       # the CSO's blind rating
+    ("proposal", "first_viewed_at", "TEXT NOT NULL DEFAULT ''"),   # for time-on-proposal
+    ("proposal", "decided_at", "TEXT NOT NULL DEFAULT ''"),
+    ("proposal", "decided_by", "TEXT NOT NULL DEFAULT ''"),
+]
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    for table, column, ddl in MIGRATIONS:
+        cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+
+
 def default_path() -> Path:
     return Path(os.environ.get("OHL_DB", "ohl.db"))
 
@@ -154,6 +170,7 @@ def connect(path: str | Path | None = None, init: bool = True) -> sqlite3.Connec
         return conn
     conn.execute("PRAGMA journal_mode = WAL")
     conn.executescript(SCHEMA)
+    _migrate(conn)
     if conn.execute("SELECT 1 FROM meta WHERE key = 'secret'").fetchone() is None:
         conn.execute("INSERT INTO meta (key, value) VALUES ('secret', ?)", (secrets.token_hex(32),))
     return conn

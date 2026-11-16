@@ -3,8 +3,6 @@ import pytest
 from ohl import db
 from ohl import service as S
 
-PASSWORD = "correct horse battery"
-
 
 @pytest.fixture
 def conn(tmp_path):
@@ -15,13 +13,13 @@ def conn(tmp_path):
 
 @pytest.fixture
 def cso(conn):
-    return S.add_user(conn, email="cso@example.org", name="Test CSO", role="cso", password=PASSWORD,
+    return S.add_user(conn, email="cso@example.org", name="Test CSO", role="cso",
                       registration="GMC 0000000", actor="cli:test")
 
 
 @pytest.fixture
 def viewer(conn):
-    return S.add_user(conn, email="viewer@example.org", name="Test Viewer", role="viewer", password=PASSWORD,
+    return S.add_user(conn, email="viewer@example.org", name="Test Viewer", role="viewer",
                       actor="cli:test")
 
 

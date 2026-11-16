@@ -24,7 +24,7 @@
     {% if user.role == 'cso' %}<a class="btn primary" href="/s/{{ system.id }}/issue">Issue version</a>{% endif %}
   </div>
 </div>
-{{ freshness(system, last_issue, pending, verdict, changes) }}
+{{ freshness(system, last_issue, pending, verdict, changes, last_scan) }}
 
 <div class="box tablebox">
 {% if hazards %}
@@ -33,7 +33,7 @@
   <tbody>
   {% for h in hazards %}
   <tr class="link" onclick="location.href='/s/{{ system.id }}/h/{{ h.ref|urlencode }}'">
-    <td class="nowrap"><a href="/s/{{ system.id }}/h/{{ h.ref|urlencode }}" style="text-decoration:none">{{ h.ref }}</a></td>
+    <td class="id"><a href="/s/{{ system.id }}/h/{{ h.ref|urlencode }}" style="text-decoration:none">{{ h.ref }}</a></td>
     <td class="wide">{{ h.title }}{% if h.status != 'open' %} <span class="tag">{{ h.status }}</span>{% endif %}</td>
     <td class="nowrap" aria-label="Risk {{ h.initial_risk or 'not rated' }} initial, {{ h.residual_risk or 'not rated' }} residual">{{ risk_cell(scheme, h.initial_risk, h.residual_risk) }}</td>
     <td class="nowrap">
@@ -53,6 +53,6 @@
 </div>
 {% endif %}
 </div>
-<p class="legend">Risk is initial → <b>residual</b>. {% for k in ['1','2','3','4','5'] %}{{ k }} {{ scheme.short[k] }}{{ ' · ' if not loop.last }}{% endfor %}. Scheme: {{ scheme.name }}.
+<p class="legend">Risk is initial → residual. {% for k in ['1','2','3','4','5'] %}{{ k }} {{ scheme.short[k] }}{{ ' · ' if not loop.last }}{% endfor %}. Scheme: {{ scheme.name }}.
   <a href="/s/{{ system.id }}/settings">System details</a></p>
 {% endblock %}

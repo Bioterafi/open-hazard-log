@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import secrets
+import threading
 from pathlib import Path
 from urllib.parse import quote
 
@@ -13,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import audit, db, export, importer, risk
+from . import audit, db, export, importer, proposals, risk, scan
 from . import service as S
 
 HERE = Path(__file__).resolve().parent
@@ -34,13 +36,13 @@ templates.env.filters["evidence"] = S.format_evidence
 templates.env.filters["day"] = lambda v: (v or "")[:10]
 
 
-class LoginRequired(Exception):
+class NoUser(Exception):
     pass
 
 
-@app.exception_handler(LoginRequired)
-async def _login(request: Request, exc):
-    return RedirectResponse(f"/login?next={quote(request.url.path)}", status_code=303)
+@app.exception_handler(NoUser)
+async def _no_user(request: Request, exc):
+    return page(request, "message.html", status=503, heading="Who is using this?", text=str(exc))
 
 
 @app.exception_handler(S.Forbidden)
@@ -60,11 +62,22 @@ def conn():
 
 
 def current_user(request: Request, c) -> dict:
-    email = request.session.get("user")
-    u = S.get_user(c, email) if email else None
-    if not u:
-        raise LoginRequired()
-    return u
+    """No login: the app runs on one computer as one named person, so every change is still
+    attributed to them. Set by `ohl serve --as`, else the only CSO."""
+    email = os.environ.get("OHL_USER", "").strip()
+    if email:
+        u = S.get_user(c, email)
+        if not u:
+            raise NoUser(f"The app was started as {email}, but there's no such user. Add one with: ohl user add")
+        return u
+    csos = [dict(r) for r in c.execute("SELECT email, name, role, registration FROM user WHERE role = 'cso'")]
+    if len(csos) == 1:
+        return csos[0]
+    if not csos:
+        raise NoUser("There's no Clinical Safety Officer yet. Add one with:\n"
+                     "ohl user add you@example.org --name \"Your Name\" --role cso --registration \"GMC 1234567\"")
+    raise NoUser("There's more than one CSO, so say who you are when starting the app:\n"
+                 "ohl serve --as you@example.org")
 
 
 def csrf_token(request: Request) -> str:
@@ -116,36 +129,7 @@ def log_context(c, sid: int) -> dict:
     v = audit.verify(c)
     return {"system": s, "scheme": s["risk_scheme"], "last_issue": issues[0] if issues else None,
             "pending": S.pending_proposals(c, sid), "verdict": v,
-            "changes": len(S.changes_since_issue(c, sid))}
-
-
-# ---------------------------------------------------------------- auth
-
-@app.get("/login", response_class=HTMLResponse)
-def login_form(request: Request, next: str = "/"):
-    return page(request, "login.html", next=next, error="")
-
-
-@app.post("/login")
-async def login(request: Request):
-    form = await form_of(request)
-    c = conn()
-    u = S.authenticate(c, str(form.get("email", "")), str(form.get("password", "")))
-    nxt = str(form.get("next") or "/")
-    if not nxt.startswith("/") or nxt.startswith("//"):
-        nxt = "/"
-    if not u:
-        return page(request, "login.html", status=401, next=nxt, error="Email or password not recognised.")
-    request.session.clear()
-    request.session["user"] = u["email"]
-    return go(nxt)
-
-
-@app.post("/logout")
-async def logout(request: Request):
-    await form_of(request)
-    request.session.clear()
-    return go("/login")
+            "changes": len(S.changes_since_issue(c, sid)), "last_scan": proposals.last_run(c, sid)}
 
 
 # ---------------------------------------------------------------- systems
@@ -197,6 +181,12 @@ async def settings_save(request: Request, sid: int):
     sources = dict(s["sources"])
     sources["repo"] = str(form.get("repo", "")).strip()
     sources["docs"] = [d.strip() for d in str(form.get("docs", "")).split(",") if d.strip()]
+    sources["code_globs"] = [g.strip() for g in str(form.get("code_globs", "")).split(",") if g.strip()]
+    sources["uses_ai"] = form.get("uses_ai") == "on"
+    try:
+        sources["max_proposals"] = max(1, min(50, int(str(form.get("max_proposals") or 15))))
+    except ValueError:
+        sources["max_proposals"] = 15
     try:
         S.update_system(c, u, sid, {"name": form.get("name", ""), "version": form.get("version", ""),
                                     "intended_use": form.get("intended_use", ""),
@@ -225,11 +215,150 @@ def log(request: Request, sid: int):
     return page(request, "log.html", user=u, hazards=hazards, **log_context(c, sid))
 
 
+# ---------------------------------------------------------------- scan (runs in a background thread)
+
+SCAN_CLIENT = None          # tests swap in a fake model client
+SCANS: dict[int, dict] = {}  # system id -> state of the latest web-started scan
+_scan_lock = threading.Lock()
+
+
+def _scan_worker(sid: int, user: dict) -> None:
+    c = db.connect(DB_PATH, init=False)
+    try:
+        r = scan.run(c, user, sid, client=SCAN_CLIENT)
+        state = {"state": "done", "message": f"Scan finished: {len(r.shown)} proposal{'s' if len(r.shown) != 1 else ''}"
+                                               f" for review, {r.hidden_no_quote} hidden (no verified quote)."}
+    except (S.Invalid, S.Forbidden, scan.ScanError) as e:
+        state = {"state": "error", "message": f"Scan failed, nothing stored: {e}"}
+    except Exception as e:  # API errors, network: report, never crash the app
+        state = {"state": "error", "message": f"Scan failed, nothing stored: {type(e).__name__}: {e}"}
+    finally:
+        c.close()
+    SCANS[sid] = {**SCANS.get(sid, {}), **state}
+
+
+@app.post("/s/{sid}/scan")
+async def scan_start(request: Request, sid: int):
+    await form_of(request)
+    c = conn()
+    u = current_user(request, c)
+    try:
+        scan.preflight(c, u, sid)
+    except S.Invalid as e:
+        SCANS[sid] = {"state": "error", "message": str(e)}
+        return go(f"/s/{sid}/review")
+    with _scan_lock:
+        if SCANS.get(sid, {}).get("state") == "running":
+            return go(f"/s/{sid}/review")
+        t = threading.Thread(target=_scan_worker, args=(sid, u), daemon=True)
+        SCANS[sid] = {"state": "running", "started": db.now(), "by": u["name"], "thread": t}
+    t.start()
+    return go(f"/s/{sid}/review")
+
+
+# ---------------------------------------------------------------- review
+
+def review_context(c, sid: int) -> dict:
+    return {**log_context(c, sid), "queue": proposals.pending(c, sid), "recent": proposals.decided(c, sid),
+            "scan_state": {k: v for k, v in SCANS.get(sid, {}).items() if k != "thread"},
+            "reasons": proposals.REJECT_REASONS, "who": names(c)}
+
+
 @app.get("/s/{sid}/review", response_class=HTMLResponse)
 def review(request: Request, sid: int):
     c = conn()
     u = current_user(request, c)
-    return page(request, "review.html", user=u, **log_context(c, sid))
+    ctx = review_context(c, sid)
+    if ctx["queue"] and ctx["scan_state"].get("state") != "running":
+        return go(f"/s/{sid}/review/{ctx['queue'][0]['id']}")
+    return page(request, "review.html", user=u, p=None, **ctx)
+
+
+@app.get("/s/{sid}/review/{pid}", response_class=HTMLResponse)
+def review_item(request: Request, sid: int, pid: int):
+    c = conn()
+    u = current_user(request, c)
+    p = proposals.get(c, sid, pid)
+    proposals.mark_viewed(c, u, p)
+    target = S.get_hazard(c, sid, p["target"]) if p["target"] else None
+    return page(request, "review.html", user=u, p=p, target=target, error=request.query_params.get("error", ""),
+                **review_context(c, sid))
+
+
+def _next(c, sid: int) -> RedirectResponse:
+    q = proposals.pending(c, sid)
+    return go(f"/s/{sid}/review/{q[0]['id']}" if q else f"/s/{sid}/review")
+
+
+def _back_with(sid: int, pid: int, msg: str) -> RedirectResponse:
+    return go(f"/s/{sid}/review/{pid}?error={quote(msg)}")
+
+
+@app.post("/s/{sid}/review/{pid}/rate")
+async def review_rate(request: Request, sid: int, pid: int):
+    form = await form_of(request)
+    c = conn()
+    u = current_user(request, c)
+    try:
+        proposals.rate(c, u, sid, pid, str(form.get("severity", "")), str(form.get("likelihood", "")),
+                       str(form.get("rationale", "")))
+    except S.Invalid as e:
+        return _back_with(sid, pid, str(e))
+    return go(f"/s/{sid}/review/{pid}")
+
+
+@app.post("/s/{sid}/review/{pid}/approve")
+async def review_approve(request: Request, sid: int, pid: int):
+    await form_of(request)
+    c = conn()
+    u = current_user(request, c)
+    try:
+        proposals.approve(c, u, sid, pid)
+    except S.Invalid as e:
+        return _back_with(sid, pid, str(e))
+    return _next(c, sid)
+
+
+@app.post("/s/{sid}/review/{pid}/reject")
+async def review_reject(request: Request, sid: int, pid: int):
+    form = await form_of(request)
+    c = conn()
+    u = current_user(request, c)
+    try:
+        proposals.reject(c, u, sid, pid, str(form.get("reason", "")), str(form.get("detail", "")))
+    except S.Invalid as e:
+        return _back_with(sid, pid, str(e))
+    return _next(c, sid)
+
+
+@app.get("/s/{sid}/review/{pid}/edit", response_class=HTMLResponse)
+def review_edit(request: Request, sid: int, pid: int):
+    c = conn()
+    u = current_user(request, c)
+    S.require_cso(u)
+    p = proposals.get(c, sid, pid)
+    if proposals.needs_rating(p) and not p["cso_rating"]:
+        return _back_with(sid, pid, "Enter your own rating before editing.")
+    target = S.get_hazard(c, sid, p["target"]) if p["target"] else None
+    return page(request, "review_edit.html", user=u, p=p, f=proposals.edit_defaults(p), target=target, error="",
+                **log_context(c, sid))
+
+
+@app.post("/s/{sid}/review/{pid}/edit")
+async def review_edit_save(request: Request, sid: int, pid: int):
+    form = await form_of(request)
+    c = conn()
+    u = current_user(request, c)
+    p = proposals.get(c, sid, pid)
+    data = {k: str(form.get(k, "")) for k in ("title", "description", "effects", "harm", "causes", "controls",
+                                              "initial_severity", "initial_likelihood", "initial_justification")}
+    try:
+        proposals.edit_approve(c, u, sid, pid, data)
+    except S.Invalid as e:
+        target = S.get_hazard(c, sid, p["target"]) if p["target"] else None
+        return page(request, "review_edit.html", status=400, user=u, p=p, f=data, target=target, error=str(e),
+                    **log_context(c, sid))
+    return _next(c, sid)
 
 
 # ---------------------------------------------------------------- hazards

@@ -1,11 +1,141 @@
 {% extends "base.html" %}
+{% from "macros.html" import freshness %}
 {% set tab = 'review' %}
-{% block title %}Review · {{ system.name }}{% endblock %}
+{% block title %}Review{% if p %} {{ p.label }}{% endif %} · {{ system.name }}{% endblock %}
 {% block main %}
-<div class="title"><h1>Review</h1></div>
-<p class="fresh">Proposals from the agent and the checks. Nothing reaches the log until you decide.</p>
-<div class="box"><div class="empty">
-  <p><b>No proposals waiting.</b></p>
-  <p class="faint">The agent scan arrives in M2 and the evidence and code checks in M3.</p>
-</div></div>
+<div class="title">
+  <h1>Review</h1>
+  {% if user.role in ('cso', 'contributor') %}
+  <div class="actions">
+    <form method="post" action="/s/{{ system.id }}/scan" style="margin:0">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="btn" {{ 'disabled' if scan_state.state == 'running' }}>Run scan</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+<p class="fresh">Proposals from the agent and the checks. Nothing reaches the log until you decide.
+  {% if last_scan %}Last scan <b>{{ last_scan.at|day }}</b> by {{ who.get(last_scan.started_by, last_scan.started_by) }}{% if last_scan.model_used.startswith('replay:') %} (replayed saved output){% endif %}: {{ last_scan.candidates }} candidate{{ 's' if last_scan.candidates != 1 }},
+  {{ last_scan.proposals|length }} shown, {{ last_scan.hidden_no_verified_quote }} hidden (no verified quote). Lenses run: {{ last_scan.lenses_run|join(', ') or 'none' }}.{% endif %}</p>
+
+{% if scan_state.state == 'running' %}
+<div class="alert">Scan running since {{ scan_state.started[11:16] }} UTC, started by {{ scan_state.by }}. This usually takes a few minutes. <a href="/s/{{ system.id }}/review">Refresh</a></div>
+{% elif scan_state.state in ('done', 'error') %}
+<div class="alert {{ 'inv' if scan_state.state == 'error' }}">{{ scan_state.message }}</div>
+{% endif %}
+{% if last_scan and last_scan.not_proposed_summary %}<p class="small faint">Not proposed this run: {{ last_scan.not_proposed_summary }}</p>{% endif %}
+<p class="small faint">The scan supplements a hazard workshop; it never replaces one.</p>
+
+<div class="box queue" style="margin-bottom:24px">
+  {% for q in queue %}
+  <a class="qi {{ 'on' if p and p.id == q.id }}" href="/s/{{ system.id }}/review/{{ q.id }}" style="text-decoration:none">
+    <span>{{ q.label }}</span>
+    <span>{{ 'New hazard' if q.kind == 'new_hazard' else 'Adds to ' ~ q.target }}: {{ q.payload.title }}</span>
+    <span class="src">{{ q.origin }} · {{ q.confidence }} confidence</span>
+  </a>
+  {% else %}
+  <div class="empty"><p><b>No proposals waiting.</b></p>
+    <p class="faint">{% if user.role in ('cso', 'contributor') %}Run a scan to get proposals from the system's docs and code.{% endif %}</p></div>
+  {% endfor %}
+</div>
+
+{% if p %}
+{% if error %}<div class="alert inv">{{ error }}</div>{% endif %}
+{% set pl = p.payload %}
+<div class="split">
+  <div class="box">
+    <div class="hd"><h3>{{ p.label }} · {{ 'New hazard' if p.kind == 'new_hazard' else 'Adds to ' ~ p.target }}</h3>
+      <span class="faint small">{{ p.origin }} · {{ pl.lens|replace('_', ' ') }} lens · {{ p.prompt_version }} · {{ p.model_used }}</span></div>
+    <div class="bd">
+      {% if p.status != 'pending' %}<div class="alert">{{ p.status|capitalize }}{% if p.reject_reason %}: {{ p.reject_reason }}{% endif %}</div>{% endif %}
+      {% if target %}<p>Current {{ target.ref }}: <b>{{ target.title }}</b>. Approving adds the new causes and controls below to it. Ratings don't change; edit the hazard to re-rate.</p>{% endif %}
+      <dl>
+        {% if not target %}<dt>Hazard</dt><dd><span class="add">{{ pl.title }}</span></dd>
+        {% if pl.description %}<dt>Description</dt><dd><span class="add">{{ pl.description }}</span></dd>{% endif %}{% endif %}
+        <dt>Causes</dt><dd>{% for c in pl.causes %}<span class="add">{{ c.text }} <span class="tag">{{ c.category }}</span>{% if c.paths %} <span class="path">{{ c.paths|join(', ') }}</span>{% endif %}</span>{% endfor %}</dd>
+        {% if not target or not target.effects %}<dt>Effect</dt><dd><span class="add">{{ pl.effects }}</span></dd>{% endif %}
+        {% if not target or not target.harm %}<dt>Harm</dt><dd><span class="add">{{ pl.harm }}</span></dd>{% endif %}
+        <dt>Controls</dt><dd>{% for c in pl.controls %}<span class="add">{{ c.type|capitalize }}: {{ c.description }}</span>{% else %}<span class="faint">none suggested</span>{% endfor %}</dd>
+      </dl>
+    </div>
+
+    {% if p.kind == 'new_hazard' %}
+    <div class="bd">
+      <h3>Rating</h3>
+      {% if not p.cso_rating %}
+        {% if user.role == 'cso' and p.status == 'pending' %}
+        <p class="faint small" style="margin:4px 0 8px">Rate the initial risk first. The agent's suggestion appears after, so it can't anchor you.</p>
+        <form method="post" action="/s/{{ system.id }}/review/{{ p.id }}/rate" class="stack" style="gap:10px">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <div class="pair">
+            <select name="severity" aria-label="Severity" required><option value="">Severity…</option>{% for s in scheme.severities %}<option value="{{ s }}">{{ scheme.labels[s] }}</option>{% endfor %}</select>
+            <select name="likelihood" aria-label="Likelihood" required><option value="">Likelihood…</option>{% for l in scheme.likelihoods %}<option value="{{ l }}">{{ scheme.labels[l] }}</option>{% endfor %}</select>
+          </div>
+          <input type="text" name="rationale" placeholder="Your justification (optional)" aria-label="Justification">
+          <div><button class="btn">Save my rating</button></div>
+        </form>
+        {% else %}<p class="faint" style="margin:6px 0 0">Waiting for the CSO's rating. The agent's suggestion is hidden until then.</p>{% endif %}
+      {% else %}
+        {% set r = p.cso_rating %}{% set sr = p.suggested_rating %}{% set sr_risk = risk.rating(scheme, sr.severity, sr.likelihood) %}
+        <dl style="margin-top:8px">
+          <dt>Yours</dt><dd><span class="risk r{{ r.risk }}"><b>{{ r.risk }}</b> {{ risk.short(scheme, r.risk) }}</span><br>
+            <span class="faint">{{ risk.label(scheme, r.severity) }} × {{ risk.label(scheme, r.likelihood) }}</span>{% if r.rationale %}<div class="small">{{ r.rationale }}</div>{% endif %}</dd>
+          <dt>Agent</dt><dd><span class="risk r{{ sr_risk }}"><b>{{ sr_risk }}</b> {{ risk.short(scheme, sr_risk) }}</span>{% if (sr.severity, sr.likelihood) != (r.severity, r.likelihood) %} <span class="tag">differs from yours</span>{% endif %}<br>
+            <span class="faint">{{ risk.label(scheme, sr.severity) }} × {{ risk.label(scheme, sr.likelihood) }}</span><div class="small">{{ sr.rationale }}</div></dd>
+        </dl>
+        <p class="faint small" style="margin:8px 0 0">Approve uses your rating. To change it, use Edit.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if user.role == 'cso' and p.status == 'pending' %}
+    {% set blocked = p.kind == 'new_hazard' and not p.cso_rating %}
+    <div class="decide">
+      <form method="post" action="/s/{{ system.id }}/review/{{ p.id }}/approve" style="margin:0">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="btn primary" {{ 'disabled title="Enter your rating first"'|safe if blocked }}>Approve</button>
+      </form>
+      {% if blocked %}<span class="btn" aria-disabled="true">Edit</span>
+      {% else %}<a class="btn" href="/s/{{ system.id }}/review/{{ p.id }}/edit">Edit</a>{% endif %}
+      <details class="menu" style="margin-left:auto">
+        <summary class="btn">Reject…</summary>
+        <div class="items" style="padding:12px;min-width:300px">
+          <form method="post" action="/s/{{ system.id }}/review/{{ p.id }}/reject" class="stack" style="gap:10px">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <select name="reason" aria-label="Reason" required><option value="">Reason…</option>{% for k, v in reasons.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+            <input type="text" name="detail" placeholder="Why (helps the next scan)" aria-label="Why">
+            <div><button class="btn primary">Reject</button></div>
+          </form>
+        </div>
+      </details>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="box">
+    <div class="hd"><h3>Why the agent proposed this</h3><span class="faint small">{{ p.confidence }} confidence</span></div>
+    <div class="bd"><p class="pre" style="margin:0">{{ p.reasoning }}</p></div>
+    <div class="bd"><h3>Assumptions</h3><p class="pre" style="margin:6px 0 0">{{ p.assumptions or 'None stated' }}</p></div>
+    <div class="bd">
+      <h3 style="margin-bottom:8px">Sources</h3>
+      {% for c in p.citations %}
+      <div class="cite">{{ c.path }}{% if c.lines %}:{{ c.lines }}{% endif %}
+        {% if c.found %}<span class="tag">quote found</span>{% else %}<span class="tag warn">quote not found</span>{% endif %}
+        <blockquote>"{{ c.quote }}"</blockquote></div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if recent %}
+<h2 style="margin:32px 0 10px">Recently decided</h2>
+<div class="box tablebox"><table>
+  <thead><tr><th>ID</th><th>Proposal</th><th>Decision</th><th>When</th></tr></thead>
+  <tbody>{% for q in recent %}
+  <tr><td class="nowrap"><a href="/s/{{ system.id }}/review/{{ q.id }}">{{ q.label }}</a></td><td class="wide">{{ q.payload.title }}</td>
+    <td>{{ q.status|capitalize }}{% if q.reject_reason %}: {{ q.reject_reason }}{% endif %}</td><td class="nowrap faint">{{ q.decided_at|day }}</td></tr>
+  {% endfor %}</tbody>
+</table></div>
+{% endif %}
 {% endblock %}

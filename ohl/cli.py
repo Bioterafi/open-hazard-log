@@ -43,8 +43,7 @@ def cmd_init(args):
 
 def cmd_user_add(args):
     conn = _conn(args)
-    password = sys.stdin.readline().rstrip("\n") if args.password_stdin else getpass.getpass("Password: ")
-    u = S.add_user(conn, email=args.email, name=args.name, role=args.role, password=password,
+    u = S.add_user(conn, email=args.email, name=args.name, role=args.role,
                    registration=args.registration or "", actor=f"cli:{getpass.getuser()}")
     print(f"added {u['role']} {u['name']} <{u['email']}>")
 
@@ -54,6 +53,29 @@ def cmd_system_add(args):
     sid = S.create_system(conn, _user(conn, args.as_), name=args.name, version=args.version or "",
                           intended_use=args.intended_use or "", clinical_context=args.clinical_context or "")
     print(f"created system {sid}: {args.name}")
+
+
+def cmd_system_configure(args):
+    conn = _conn(args)
+    user = _user(conn, args.as_)
+    s = S.get_system(conn, args.system)
+    sources = dict(s["sources"])
+    if args.repo is not None:
+        sources["repo"] = args.repo
+    if args.docs is not None:
+        sources["docs"] = [d.strip() for d in args.docs.split(",") if d.strip()]
+    if args.code_globs is not None:
+        sources["code_globs"] = [g.strip() for g in args.code_globs.split(",") if g.strip()]
+    if args.uses_ai is not None:
+        sources["uses_ai"] = args.uses_ai
+    fields = {"sources": sources}
+    if args.confirm_no_pid:
+        fields["no_pid_confirmed"] = True
+    for k in ("intended_use", "clinical_context"):
+        if getattr(args, k) is not None:
+            fields[k] = getattr(args, k)
+    S.update_system(conn, user, args.system, fields)
+    print(f"updated system {args.system}")
 
 
 def cmd_seed_self(args):
@@ -88,6 +110,32 @@ def cmd_import(args):
         print(f"ignored column: {c}")
 
 
+def cmd_scan(args):
+    from . import scan
+    conn = _conn(args)
+    user = _user(conn, args.as_)
+    system, inputs = scan.preflight(conn, user, args.system)
+    size = sum(len(t) for t in inputs.sources.values())
+    client = scan.ReplayClient(args.replay) if args.replay else None
+    how = (f"replaying saved output {args.replay}, no model call" if client else
+           f"model {args.model or scan.DEFAULT_MODEL}; this can take a few minutes")
+    print(f"Scanning {system['name']}: {len(inputs.sources)} sources, {size:,} characters, "
+          f"{len(inputs.tree)} files in tree; {how}.")
+    try:
+        r = scan.run(conn, user, args.system, client=client, model=args.model, max_proposals=args.max)
+    except scan.ScanError as e:
+        sys.exit(f"Scan failed, nothing stored: {e}")
+    except Exception as e:  # API, network, auth: say what happened, store nothing
+        sys.exit(f"Scan failed, nothing stored: {type(e).__name__}: {e}")
+    print(f"Run {r.run_id} ({r.model_used}): {len(r.shown)} proposals for review, "
+          f"{r.hidden_no_quote} hidden (no verified quote), {r.over_limit} over the limit.")
+    print(f"Lenses: {', '.join(r.lenses_run)}")
+    if r.not_proposed_summary:
+        print(f"Not proposed: {r.not_proposed_summary}")
+    for s in r.skipped:
+        print(f"skipped source: {s}")
+
+
 def cmd_export(args):
     conn = _conn(args)
     issue = S.get_issue(conn, args.system, args.version) if args.version else None
@@ -112,10 +160,20 @@ def cmd_verify(args):
     sys.exit(0 if verdict.ok else 1)
 
 
+LOOPBACK = ("127.0.0.1", "localhost", "::1")
+
+
 def cmd_serve(args):
     import os
 
     import uvicorn
+    if args.host not in LOOPBACK:
+        sys.exit("There's no login, so the app only listens on this computer (127.0.0.1). "
+                 "Anyone who could reach it would act as you.")
+    conn = _conn(args)
+    if args.as_:
+        _user(conn, args.as_)
+        os.environ["OHL_USER"] = args.as_
     os.environ["OHL_DB"] = str(args.db)
     uvicorn.run("ohl.app:app", host=args.host, port=args.port, reload=args.reload)
 
@@ -133,7 +191,6 @@ def main(argv=None):
     ua.add_argument("--name", required=True)
     ua.add_argument("--role", choices=S.ROLES, required=True)
     ua.add_argument("--registration", help="CSO professional registration, e.g. 'GMC 1234567'")
-    ua.add_argument("--password-stdin", action="store_true", help="read the password from stdin")
     ua.set_defaults(fn=cmd_user_add)
 
     sa = sub.add_parser("system", help="manage systems").add_subparsers(dest="scmd", required=True)
@@ -145,6 +202,19 @@ def main(argv=None):
     sadd.add_argument("--as", dest="as_", required=True, help="CSO email")
     sadd.set_defaults(fn=cmd_system_add)
 
+    sconf = sa.add_parser("configure", help="set a system's sources and scan settings")
+    sconf.add_argument("--system", type=int, required=True)
+    sconf.add_argument("--repo")
+    sconf.add_argument("--docs", help="comma-separated doc folders")
+    sconf.add_argument("--code-globs", help="comma-separated patterns of code files the scan reads")
+    sconf.add_argument("--uses-ai", action=argparse.BooleanOptionalAction, default=None)
+    sconf.add_argument("--confirm-no-pid", action="store_true",
+                       help="confirm the sources contain no patient-identifiable data")
+    sconf.add_argument("--intended-use")
+    sconf.add_argument("--clinical-context")
+    sconf.add_argument("--as", dest="as_", required=True, help="CSO email")
+    sconf.set_defaults(fn=cmd_system_configure)
+
     ss = sub.add_parser("seed-self", help="load OHL's own hazard log (unrated)")
     ss.add_argument("--as", dest="as_", required=True, help="CSO email")
     ss.set_defaults(fn=cmd_seed_self)
@@ -154,6 +224,14 @@ def main(argv=None):
     im.add_argument("--system", type=int, required=True)
     im.add_argument("--as", dest="as_", required=True, help="CSO email")
     im.set_defaults(fn=cmd_import)
+
+    sc = sub.add_parser("scan", help="run the agent scan; proposals go to the review queue")
+    sc.add_argument("--system", type=int, required=True)
+    sc.add_argument("--as", dest="as_", required=True, help="CSO or contributor email")
+    sc.add_argument("--model", help="model ID (default: $OHL_SCAN_MODEL or claude-opus-5-5)")
+    sc.add_argument("--max", type=int, help="maximum proposals (default 15)")
+    sc.add_argument("--replay", help="use a saved model output (JSON) instead of calling the API")
+    sc.set_defaults(fn=cmd_scan)
 
     ex = sub.add_parser("export", help="export the hazard log")
     ex.add_argument("--system", type=int, required=True)
@@ -175,6 +253,7 @@ def main(argv=None):
     sv.add_argument("--host", default="127.0.0.1")
     sv.add_argument("--port", type=int, default=8000)
     sv.add_argument("--reload", action="store_true")
+    sv.add_argument("--as", dest="as_", help="who changes are recorded as (default: the only CSO)")
     sv.set_defaults(fn=cmd_serve)
 
     args = p.parse_args(argv)

@@ -14,7 +14,7 @@
   <div class="box"><div class="bd">
     <dl>
       {% if h.description %}<dt>Description</dt><dd class="pre">{{ h.description }}</dd>{% endif %}
-      <dt>Causes</dt><dd>{% for c in h.causes %}{{ c.text }}{% if c.category %} [{{ c.category }}]{% endif %}{% if c.paths %}<br><span class="faint small">↳ {{ c.paths|join(', ') }}</span>{% endif %}{% if not loop.last %}<br>{% endif %}{% else %}<span class="faint">–</span>{% endfor %}</dd>
+      <dt>Causes</dt><dd>{% for c in h.causes %}{{ c.text }}{% if c.category %} <span class="tag">{{ c.category }}</span>{% endif %}{% if c.paths %}<br><span class="path">↳ {{ c.paths|join(', ') }}</span>{% endif %}{% if not loop.last %}<br>{% endif %}{% else %}<span class="faint">–</span>{% endfor %}</dd>
       <dt>Effect</dt><dd class="pre">{{ h.effects or '–' }}</dd>
       <dt>Harm</dt><dd class="pre">{{ h.harm or '–' }}</dd>
       <dt>Initial</dt><dd>{{ rating(scheme, h.initial_severity, h.initial_likelihood, h.initial_risk, h.initial_justification) }}</dd>
@@ -32,10 +32,10 @@
         <div class="ev">
           <span class="nowrap">{% if user.role == 'cso' %}<a href="/s/{{ system.id }}/c/{{ c.ref|urlencode }}/edit?back={{ h.ref|urlencode }}">{{ c.ref }}</a>{% else %}{{ c.ref }}{% endif %}</span>
           <span>{{ c.type|capitalize }}{% if c.stage == 'existing' %} (existing){% endif %}: {{ c.description }}{% if c.hazard_refs|length > 1 %} <span class="faint small">also {{ c.hazard_refs|reject('equalto', h.ref)|join(', ') }}</span>{% endif %}</span>
-          <span class="r">{% if c.status == 'invalid' %}<span class="tag warn">invalid</span>{% else %}[{{ c.status|replace('_', ' ') }}]{% endif %}</span>
+          <span class="r">{% if c.status == 'invalid' %}<span class="tag warn">invalid</span>{% else %}<span class="tag">{{ c.status|replace('_', ' ') }}</span>{% endif %}</span>
         </div>
         {% for e in c.evidence %}
-        <div class="ev"><span class="faint">  ↳</span><span>{{ e.label }}{% if e.path_or_url %} <span class="faint">{{ e.path_or_url }}</span>{% endif %}</span><span class="r faint">{{ e.state }}</span></div>
+        <div class="ev"><span class="faint">  ↳</span><span>{{ e.label }}{% if e.path_or_url %} <span class="path">{{ e.path_or_url }}</span>{% endif %}</span><span class="r faint">{{ e.state }}</span></div>
         {% endfor %}
         {% else %}
         <p class="faint" style="margin:0">No controls yet.</p>

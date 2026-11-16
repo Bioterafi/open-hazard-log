@@ -4,7 +4,7 @@
     {
       "name": "ohl-demo",
       "runtimeExecutable": "uv",
-      "runtimeArgs": ["run", "ohl", "--db", "demo.db", "serve", "--port", "8765"],
+      "runtimeArgs": ["run", "ohl", "--db", "demo.db", "serve", "--port", "8765", "--reload", "--as", "cso@demo.local"],
       "port": 8765
     }
   ]

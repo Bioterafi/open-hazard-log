@@ -6,9 +6,7 @@ Rule enforced here, not in the UI: only a CSO can change the log.
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
-import os
 import re
 import sqlite3
 import subprocess
@@ -44,30 +42,13 @@ class Invalid(ValueError):
 
 # ---------------------------------------------------------------- users
 
-def hash_password(password: str) -> str:
-    salt = os.urandom(16)
-    dk = hashlib.scrypt(password.encode(), salt=salt, n=2**14, r=8, p=1)
-    return f"scrypt${salt.hex()}${dk.hex()}"
-
-
-def check_password(password: str, stored: str) -> bool:
-    try:
-        _, salt, dk = stored.split("$")
-    except ValueError:
-        return False
-    got = hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt), n=2**14, r=8, p=1)
-    return hmac.compare_digest(got.hex(), dk)
-
-
-def add_user(conn, *, email: str, name: str, role: str, password: str, registration: str = "",
-             actor: str) -> dict:
+def add_user(conn, *, email: str, name: str, role: str, registration: str = "", actor: str) -> dict:
+    """A named person changes are attributed to. No passwords: the app runs on one computer as one user."""
     email = email.strip().lower()
     if role not in ROLES:
         raise Invalid(f"role must be one of {', '.join(ROLES)}")
     if not email or not name.strip():
         raise Invalid("email and name are required")
-    if len(password) < 10:
-        raise Invalid("password must be at least 10 characters")
     if role == "cso" and not registration.strip():
         raise Invalid("a CSO needs a professional registration (DCB0129 2.3.2), e.g. 'GMC 1234567'")
     user = {"email": email, "name": name.strip(), "role": role, "registration": registration.strip()}
@@ -76,7 +57,7 @@ def add_user(conn, *, email: str, name: str, role: str, password: str, registrat
             raise Invalid(f"user {email} already exists")
         conn.execute(
             "INSERT INTO user (email, name, role, registration, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (email, user["name"], role, user["registration"], hash_password(password), now()),
+            (email, user["name"], role, user["registration"], "", now()),
         )
         audit.append(conn, actor=actor, action="user_added", object_ref=email, after=user)
     return user
@@ -86,13 +67,6 @@ def get_user(conn, email: str) -> dict | None:
     row = conn.execute("SELECT email, name, role, registration FROM user WHERE email = ?",
                        (email.strip().lower(),)).fetchone()
     return dict(row) if row else None
-
-
-def authenticate(conn, email: str, password: str) -> dict | None:
-    row = conn.execute("SELECT * FROM user WHERE email = ?", (email.strip().lower(),)).fetchone()
-    if row and check_password(password, row["password_hash"]):
-        return {k: row[k] for k in ("email", "name", "role", "registration")}
-    return None
 
 
 def require_cso(user: dict) -> None:
@@ -340,25 +314,32 @@ def create_hazard(conn, user: dict, system_id: int, data: dict, *, ref: str | No
         return work()
 
 
-def update_hazard(conn, user: dict, system_id: int, ref: str, data: dict, *, note: str = "") -> dict:
+def update_hazard(conn, user: dict, system_id: int, ref: str, data: dict, *, note: str = "",
+                  _in_tx: bool = False) -> dict:
     require_cso(user)
+    if _in_tx:
+        return _update_hazard(conn, user, system_id, ref, data, note)
     with tx(conn):
-        s = get_system(conn, system_id)
-        before = get_hazard(conn, system_id, ref)
-        changes = _clean_hazard(s["risk_scheme"], data)
-        after = _with_risk(s["risk_scheme"], {**before, **changes})
-        if {k: after[k] for k in HAZARD_FIELDS} == {k: before[k] for k in HAZARD_FIELDS}:
-            return before  # nothing changed, nothing recorded
-        after["version"] = before["version"] + 1
-        sets = [k for k in (*HAZARD_FIELDS, "initial_risk", "residual_risk", "version")]
-        conn.execute(
-            f"UPDATE hazard SET {', '.join(f'{k} = :{k}' for k in sets)} WHERE system_id = :system_id AND ref = :ref",
-            dict(after, causes=dumps(after["causes"])),
-        )
-        after = get_hazard(conn, system_id, ref)
-        audit.append(conn, actor=user["email"], action="hazard_updated", system_id=system_id,
-                     object_ref=ref, before=before, after=after, note=note)
-        return after
+        return _update_hazard(conn, user, system_id, ref, data, note)
+
+
+def _update_hazard(conn, user: dict, system_id: int, ref: str, data: dict, note: str) -> dict:
+    s = get_system(conn, system_id)
+    before = get_hazard(conn, system_id, ref)
+    changes = _clean_hazard(s["risk_scheme"], data)
+    after = _with_risk(s["risk_scheme"], {**before, **changes})
+    if {k: after[k] for k in HAZARD_FIELDS} == {k: before[k] for k in HAZARD_FIELDS}:
+        return before  # nothing changed, nothing recorded
+    after["version"] = before["version"] + 1
+    sets = [k for k in (*HAZARD_FIELDS, "initial_risk", "residual_risk", "version")]
+    conn.execute(
+        f"UPDATE hazard SET {', '.join(f'{k} = :{k}' for k in sets)} WHERE system_id = :system_id AND ref = :ref",
+        dict(after, causes=dumps(after["causes"])),
+    )
+    after = get_hazard(conn, system_id, ref)
+    audit.append(conn, actor=user["email"], action="hazard_updated", system_id=system_id,
+                 object_ref=ref, before=before, after=after, note=note)
+    return after
 
 
 # ---------------------------------------------------------------- controls
