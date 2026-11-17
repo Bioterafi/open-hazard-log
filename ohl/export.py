@@ -12,14 +12,16 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 
 from openpyxl import Workbook
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.styles import Alignment, Border, Font, Side
 from openpyxl.utils import get_column_letter
 
 from . import risk
-from .service import format_causes
 from .db import now
+from .service import format_causes
 
 GROUPS = {
     "existing": [("HIT Design", ("design", "test")), ("User Training", ("training", "warning")),
@@ -28,6 +30,67 @@ GROUPS = {
                    ("Business Process Change", ("process",))],
 }
 TAGGED = ("test", "warning")  # types that share a template group and need a tag
+
+# Formula injection (OHL-H9): a hazard log is opened by other organisations, so no exported
+# cell may run as a formula. XLSX cells are typed as text. Two XLSX limits remain: a cell
+# holds at most 32,767 characters (longer text is cut, and says so) and spreadsheet
+# programs turn CR LF line breaks into LF. CSV and JSON keep every character.
+#
+# CSV has no types. Every cell is quoted, and any stretch of text a spreadsheet could take
+# as the start of a cell gets a leading apostrophe (OWASP) if it begins with = + - @, an
+# apostrophe or a double quote. A stretch starts at the start of the cell or after ';', a
+# tab or a line break: a spreadsheet that splits on those (Excel in many locales, LibreOffice
+# by default) can lose track of the quotes and start a cell there. Commas aren't guarded:
+# every program that splits on commas honours the quotes around a cell. The file says it is
+# guarded (CSV_GUARD_MARK), and the importer then takes the apostrophes off again, so text
+# comes back exactly as it went out. Older OHL exports had no guard and are left alone.
+FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
+CSV_GUARD_MARK = "# CSV: formula-guarded (OHL 0.1.1)"
+XLSX_CELL_LIMIT = 32767
+_GUARDED = ("=", "+", "-", "@", "'", '"')
+_SPLIT = re.compile(r"([;\t\r\n])")  # separators kept, at the odd indexes of the split
+
+
+def _needs_guard(stretch: str) -> bool:
+    return stretch.lstrip().startswith(_GUARDED)
+
+
+def csv_safe(value):
+    if not isinstance(value, str):
+        return value
+    parts = _SPLIT.split(value)
+    return "".join("'" + p if i % 2 == 0 and _needs_guard(p) else p for i, p in enumerate(parts))
+
+
+def csv_unguard(text: str) -> str:
+    """The inverse of csv_safe: removes exactly the apostrophes it added."""
+    parts = _SPLIT.split(text)
+    return "".join(p[1:] if i % 2 == 0 and p.startswith("'") and _needs_guard(p[1:]) else p
+                   for i, p in enumerate(parts))
+
+
+def _csv_rows(rows):
+    return [[csv_safe(v) for v in row] for row in rows]
+
+
+def _xlsx_text(text: str) -> str:
+    """XLSX can't hold most control characters; one would make the whole export fail,
+    for ever for an issued version. Each is shown as U+FFFD instead. Text over the cell
+    limit is cut with a visible note rather than silently."""
+    text = ILLEGAL_CHARACTERS_RE.sub("\ufffd", text)
+    if len(text) > XLSX_CELL_LIMIT:
+        note = " [… cut at the spreadsheet cell limit; the CSV and JSON exports hold the full text]"
+        text = text[:XLSX_CELL_LIMIT - len(note)] + note
+    return text
+
+
+def _text_cell(ws, row: int, col: int, value):
+    """Write a cell; strings are always stored as text, never as a formula."""
+    cell = ws.cell(row, col)
+    cell.value = _xlsx_text(value) if isinstance(value, str) else value
+    if isinstance(value, str):
+        cell.data_type = "s"
+    return cell
 
 
 def columns() -> list[tuple[str, ...]]:
@@ -113,16 +176,22 @@ def header_meta(snap: dict, issue: dict | None, exported_by: dict | None) -> lis
     return meta
 
 
+def _csv_meta(w, snap, issue, exported_by) -> None:
+    """Header lines as one-cell rows starting with '#', quoted like any other cell, so a comma
+    or line break in a system name can't start a new cell."""
+    for k, v in header_meta(snap, issue, exported_by):
+        w.writerow([csv_safe(f"# {k}: {v}")])
+    w.writerow([CSV_GUARD_MARK])
+
+
 def to_csv(snap: dict, issue: dict | None = None, exported_by: dict | None = None) -> str:
     buf = io.StringIO()
-    for k, v in header_meta(snap, issue, exported_by):
-        buf.write(f"# {k}: {v}\n")
+    w = csv.writer(buf, quoting=csv.QUOTE_ALL)
+    _csv_meta(w, snap, issue, exported_by)
     cols = columns()
-    w = csv.writer(buf)
     w.writerow([flat(c) for c in cols])
-    for h in snap["hazards"]:
-        row = hazard_row(h, snap["controls"], snap["risk_scheme"])
-        w.writerow([row.get(c, "") for c in cols])
+    rows = [hazard_row(h, snap["controls"], snap["risk_scheme"]) for h in snap["hazards"]]
+    w.writerows(_csv_rows([row.get(c, "") for c in cols] for row in rows))
     return buf.getvalue()
 
 
@@ -137,8 +206,8 @@ def to_xlsx(snap: dict, issue: dict | None = None, exported_by: dict | None = No
 
     meta = header_meta(snap, issue, exported_by)
     for i, (k, v) in enumerate(meta, start=1):
-        ws.cell(i, 1, k).font = bold
-        ws.cell(i, 2, v)
+        _text_cell(ws, i, 1, k).font = bold
+        _text_cell(ws, i, 2, v)
     top = len(meta) + 2  # first header row
     cols, depth = columns(), 3
 
@@ -154,7 +223,7 @@ def to_xlsx(snap: dict, issue: dict | None = None, exported_by: dict | None = No
             while c + run < len(cols) and cols[c + run][: level + 1] == parts[: level + 1]:
                 run += 1
             r1, c1 = top + level, c + 1
-            ws.cell(r1, c1, parts[level])
+            _text_cell(ws, r1, c1, parts[level])
             last_level = len(parts) == level + 1
             r2 = top + depth - 1 if last_level else r1
             if run > 1 or r2 > r1:
@@ -168,7 +237,7 @@ def to_xlsx(snap: dict, issue: dict | None = None, exported_by: dict | None = No
     for i, h in enumerate(snap["hazards"]):
         row = hazard_row(h, snap["controls"], snap["risk_scheme"])
         for c, col in enumerate(cols, start=1):
-            cell = ws.cell(top + depth + i, c, row.get(col, ""))
+            cell = _text_cell(ws, top + depth + i, c, row.get(col, ""))
             cell.alignment, cell.border = wrap, box
 
     widths = {"No.": 10, "Date Added": 12, "Severity": 13, "Likelihood": 12, "Risk": 6, "Owner": 16,
@@ -210,11 +279,10 @@ def deployer_rows(snap: dict) -> list[dict]:
 
 def deployer_csv(snap: dict, issue: dict | None = None, exported_by: dict | None = None) -> str:
     buf = io.StringIO()
-    for k, v in header_meta(snap, issue, exported_by):
-        buf.write(f"# {k}: {v}\n")
-    w = csv.DictWriter(buf, fieldnames=DEPLOYER_COLS)
-    w.writeheader()
-    w.writerows(deployer_rows(snap))
+    w = csv.writer(buf, quoting=csv.QUOTE_ALL)
+    _csv_meta(w, snap, issue, exported_by)
+    w.writerow(DEPLOYER_COLS)
+    w.writerows(_csv_rows([r[c] for c in DEPLOYER_COLS] for r in deployer_rows(snap)))
     return buf.getvalue()
 
 

@@ -1,0 +1,117 @@
+# OHL's own hazard log (SPEC.md section 10). Loaded by `ohl seed-self`.
+# Hazards are loaded UNRATED: severity and likelihood are the CSO's judgement.
+# A control marked in_place is built and has the named test as its evidence; whether it is
+# verified is the CSO's decision. With `ohl seed-self --repo <this checkout>`, `ohl check`
+# re-hashes each linked test file and flags any change for review.
+
+[system]
+name = "Open Hazard Log"
+version = "0.1.1"
+hazard_prefix = "OHL-H"
+control_prefix = "OHL-C"
+ref_width = 1
+intended_use = "Supports a Clinical Safety Officer in maintaining a DCB0129/DCB0160 hazard log. Agents and checks propose changes; only the CSO changes the log. Not used for direct patient care."
+clinical_context = "Used by clinical safety teams of health IT manufacturers and deploying organisations. A wrong or stale hazard log can lead to unsafe release or deployment decisions for the system it describes."
+
+[[hazard]]
+title = "Agent misses a clinically significant hazard; CSO treats the scan as complete"
+harm = "Unmitigated hazard in the described system reaches patients"
+causes = ["Scan coverage gaps [ai-model]", "Over-reliance on automated identification [human-factors]"]
+controls = [
+  { type = "warning", description = "Scan labelled as supplementing, never replacing, a hazard workshop" },
+  { type = "design", description = "Run summary lists which lenses ran", status = "in_place", evidence = "test_scan_creates_proposals_and_one_run_event | tests/test_scan.py" },
+]
+
+[[hazard]]
+title = "CSO approves an incorrect agent proposal (automation bias)"
+harm = "Wrong hazard, cause or control enters the approved log"
+causes = ["Plausible but wrong agent output [ai-model]", "Time pressure during review [human-factors]"]
+controls = [
+  { type = "design", description = "Reasoning and sources always shown open on the review screen" },
+  { type = "design", description = "Own rating required before approve; no bulk approve for hazards", status = "in_place", evidence = "test_approve_needs_blind_rating_first | tests/test_review.py\ntest_hazard_proposals_can_never_be_bulk_approved | tests/test_review.py" },
+]
+
+[[hazard]]
+title = "Agent's suggested rating anchors the CSO's judgement"
+harm = "Risk under- or over-estimated in the approved log"
+causes = ["Suggested rating seen before the CSO forms their own [human-factors]"]
+controls = [
+  { type = "design", description = "Blind rating: suggestion hidden until the CSO rates", status = "in_place", evidence = "test_scan_button_and_blind_rating | tests/test_web.py\ntest_approve_uses_the_cso_rating_not_the_agents | tests/test_review.py" },
+]
+
+[[hazard]]
+title = "Checks stop running or fail part-way; the log looks current when it isn't"
+harm = "Stale controls relied on for release or deployment decisions"
+causes = ["Scheduler or connector failure [infrastructure]", "A run fails after starting and loses a finding [software]"]
+controls = [
+  { type = "design", description = "Freshness line with last-run times; flags the checks after 7 days", status = "in_place", evidence = "test_checks_flagged_after_seven_days | tests/test_web.py" },
+  { type = "design", description = "A check run is stored whole or not at all; the next run finds the same changes", status = "in_place", evidence = "test_failed_run_stores_nothing_and_the_next_run_still_finds_the_change | tests/test_checks.py" },
+  { type = "design", description = "A failed scan or check run is recorded as a run_failed event and never counts as a fresh run", status = "in_place", evidence = "test_api_error_is_recorded_too | tests/test_scan.py\ntest_failed_run_does_not_count_as_a_fresh_check | tests/test_checks.py" },
+]
+
+[[hazard]]
+title = "Evidence reported valid after it changed"
+harm = "Control believed verified when its evidence no longer supports it"
+causes = ["Evidence file edited or deleted after verification [software]"]
+controls = [
+  { type = "design", description = "SHA-256 re-hash of evidence on every check", status = "in_place", evidence = "test_done_when_deleted_test_and_changed_source | tests/test_checks.py" },
+]
+
+[[hazard]]
+title = "Model or prompt change alters agent behaviour unnoticed"
+harm = "Silent drop in hazard identification quality"
+causes = ["Model version change [ai-model]", "Prompt edited in place [software]"]
+controls = [
+  { type = "design", description = "Model that answered stored on every proposal", status = "in_place", evidence = "test_model_used_is_the_model_that_answered | tests/test_scan.py" },
+  { type = "design", description = "Prompt files listed with their SHA-256 in prompts/MANIFEST; an edited prompt fails the tests and the scan refuses to run", status = "in_place", evidence = "test_every_prompt_file_matches_the_manifest | tests/test_resources.py\ntest_scan_refuses_a_prompt_edited_in_place | tests/test_resources.py" },
+  { type = "test", description = "Replay smoke set: ten saved outputs re-run through the pipeline on every change, results must match (determinism only, not detection quality)", status = "in_place", evidence = "test_replay_case | tests/test_replay_smoke.py\nSaved outputs | evals/hazard.scan/smoke.json" },
+  { type = "test", description = "Regression set of known hazards re-run on any model or prompt change" },
+]
+
+[[hazard]]
+title = "Prompt injection via ingested content manipulates proposals"
+harm = "Misleading proposals presented to the CSO"
+causes = ["Instructions hidden in docs, tickets or code comments [ai-model]"]
+controls = [
+  { type = "design", description = "Source content passed as delimited data; output schema and quote checks", status = "in_place", evidence = "test_request_shape_and_data_handling | tests/test_scan.py\ntest_quote_check | tests/test_scan.py\ntest_bad_output_stores_no_proposals_and_records_the_failure | tests/test_scan.py" },
+  { type = "design", description = "Agents have no write path to the log", status = "in_place", evidence = "test_agents_and_checks_cannot_write_to_the_log_at_all | tests/test_checks.py\ntest_scan_module_has_no_write_path | tests/test_scan.py\ntest_checks_module_has_no_write_path_to_the_log | tests/test_checks.py" },
+]
+
+[[hazard]]
+title = "Deployer never receives or actions a transferred hazard"
+harm = "Deployer-side control never put in place"
+causes = ["Hand-over by email or PDF gets lost [integration]"]
+deployer_action = "Receive the deployer-actions export and record each action in the local DCB0160 hazard log"
+controls = [
+  { type = "process", description = "Deployer-actions export; acknowledgement workflow planned for v2", evidence = "test_deployer_actions_export | tests/test_core.py" },
+]
+
+[[hazard]]
+title = "Someone other than the named CSO changes the log, or an exported file runs code when opened"
+harm = "Unauthorised or wrong entries in the approved log; another organisation's computer compromised through an export"
+causes = [
+  "A web page uses DNS rebinding to reach the app on 127.0.0.1 [software]",
+  "The app is started on 0.0.0.0 and someone on the network reaches it [infrastructure]",
+  "A web page on another site submits a hidden form to the app (cross-site request forgery) [software]",
+  "A page on another port of this computer frames the app and the CSO clicks inside it (clickjacking) [software]",
+  "Another program on the same computer calls the app [software]",
+  "Hazard text starting with = is run as a formula when the export is opened [software]",
+]
+controls = [
+  { type = "design", description = "Only localhost Host headers are answered (400 otherwise)", status = "in_place", evidence = "test_foreign_host_header_gets_400 | tests/test_web.py" },
+  { type = "design", description = "Only loopback clients are answered (403 otherwise), however the app is started; ohl serve refuses other addresses", status = "in_place", evidence = "test_non_loopback_client_gets_403 | tests/test_web.py\ntest_serve_refuses_anything_but_this_computer | tests/test_core.py" },
+  { type = "design", description = "Every change needs this browser's session token; changes the browser reports as coming from another page or a frame are refused, and so are requests carrying proxy headers", status = "in_place", evidence = "test_cross_site_form_without_a_session_is_refused | tests/test_web.py\ntest_changes_from_another_site_are_refused_even_with_a_token | tests/test_web.py\ntest_a_server_that_trusts_proxy_headers_still_refuses_the_network | tests/test_web.py" },
+  { type = "design", description = "No page can be shown inside a frame (X-Frame-Options, CSP frame-ancestors), so another page can't trick the CSO into clicking inside the app", status = "in_place", evidence = "test_no_page_can_be_shown_in_a_frame | tests/test_web.py" },
+  { type = "design", description = "Exported XLSX cells are typed as text; CSV cells that could start a formula get a leading apostrophe", status = "in_place", evidence = "test_xlsx_cells_are_text_never_formulas | tests/test_core.py\ntest_csv_cells_cannot_start_a_formula | tests/test_core.py" },
+  { type = "design", description = "Per-launch token so other local programs can't call the app (0.1.2)" },
+]
+
+[[hazard]]
+title = "Hazard log lost, or altered outside the app without anyone noticing"
+harm = "Safety decisions made on an incomplete or tampered record; no evidence of past decisions for audit"
+causes = ["Disk failure or deleted file [infrastructure]", "Database edited directly [software]"]
+controls = [
+  { type = "design", description = "Hash-chained, append-only audit trail; ohl verify names the first broken event", status = "in_place", evidence = "test_chain_verifies_and_catches_tampering | tests/test_core.py\ntest_chain_catches_deleted_row | tests/test_core.py" },
+  { type = "design", description = "ohl backup takes a consistent copy while the app runs and verifies it", status = "in_place", evidence = "test_backup_passes_verify_and_leaves_out_the_secret | tests/test_core.py" },
+  { type = "process", description = "Backups taken on a schedule and kept off the computer that runs the app" },
+]

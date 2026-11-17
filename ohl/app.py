@@ -17,6 +17,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from . import audit, checks, dashboard, db, export, importer, proposals, risk, scan
 from . import service as S
+from .local import LocalOnly
 
 HERE = Path(__file__).resolve().parent
 DB_PATH = db.default_path()
@@ -28,6 +29,7 @@ _boot.close()
 app = FastAPI(title="Open Hazard Log", docs_url=None, redoc_url=None, openapi_url=None)
 app.add_middleware(SessionMiddleware, secret_key=SECRET, same_site="strict", https_only=False,
                    session_cookie="ohl_session", max_age=60 * 60 * 12)
+app.add_middleware(LocalOnly)  # added last, so it runs first: localhost only, however the app is started
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 templates = Jinja2Templates(directory=HERE / "templates")
 templates.env.globals.update(risk=risk, S=S)
@@ -87,10 +89,26 @@ def csrf_token(request: Request) -> str:
 
 
 async def form_of(request: Request):
+    """Every change needs the token from this browser's own session. No session means no
+    token, and that is refused too: a form from another site arrives without the session
+    cookie. (A page on another port of this computer does get the cookie; local.py's
+    Origin, Sec-Fetch and framing rules stop that one.)"""
     form = await request.form()
-    if not secrets.compare_digest(str(form.get("csrf", "")), request.session.get("csrf", "")):
+    token = request.session.get("csrf", "")
+    if not token or not secrets.compare_digest(str(form.get("csrf", "")), token):
         raise S.Forbidden("This form has expired. Go back, reload the page and try again.")
     return form
+
+
+def own_page_view(request: Request) -> bool:
+    """A page the CSO opened in this browser, not one another page loaded (an <img>, a frame).
+    Browsers say which with Sec-Fetch-Site and Sec-Fetch-Dest. Without those headers, fall
+    back to the session: another site's requests arrive without the SameSite=strict cookie."""
+    site = request.headers.get("sec-fetch-site")
+    if site is not None:
+        return (site.lower() in ("same-origin", "none")
+                and request.headers.get("sec-fetch-dest", "document").lower() == "document")
+    return bool(request.session.get("csrf"))
 
 
 def page(request: Request, name: str, status: int = 200, **ctx) -> HTMLResponse:
@@ -113,6 +131,10 @@ def describe(e: dict) -> str:
         what = "scan found" if e["action"] == "scan_run" else "found"
         return (f"{what} {n} proposal{'s' if n != 1 else ''}"
                 + (f", {hidden} hidden (no verified quote)" if hidden else "")
+                + (" (replayed saved output)" if str(a.get("model_used", "")).startswith("replay:") else ""))
+    if e["action"] == "run_failed":
+        a = json.loads(e["after"])
+        return (f"{'scan' if a.get('origin') == 'scan' else 'checks'} failed: {a.get('error', '')}"
                 + (" (replayed saved output)" if str(a.get("model_used", "")).startswith("replay:") else ""))
     if e["action"] == "log_imported":
         a = json.loads(e["after"])
@@ -250,10 +272,10 @@ def _scan_worker(sid: int, user: dict) -> None:
         r = scan.run(c, user, sid, client=SCAN_CLIENT)
         state = {"state": "done", "message": f"Scan finished: {len(r.shown)} proposal{'s' if len(r.shown) != 1 else ''}"
                                                f" for review, {r.hidden_no_quote} hidden (no verified quote)."}
-    except (S.Invalid, S.Forbidden, scan.ScanError) as e:
-        state = {"state": "error", "message": f"Scan failed, nothing stored: {e}"}
-    except Exception as e:  # API errors, network: report, never crash the app
-        state = {"state": "error", "message": f"Scan failed, nothing stored: {type(e).__name__}: {e}"}
+    except (S.Invalid, S.Forbidden) as e:
+        state = {"state": "error", "message": f"Scan didn't start: {e}"}
+    except Exception as e:  # bad output, API errors, network: report, never crash the app
+        state = {"state": "error", "message": proposals.failure_message("Scan", e)}
     finally:
         c.close()
     SCANS[sid] = {**SCANS.get(sid, {}), **state}
@@ -287,14 +309,19 @@ CHECKS: dict[int, dict] = {}  # system id -> message from the last web-started c
 async def check_start(request: Request, sid: int):
     await form_of(request)
     c = conn()
-    u = current_user(request, c)
     try:
-        r = checks.run(c, u, sid)
-    except S.Forbidden:
-        raise
-    except Exception as e:
-        CHECKS[sid] = {"state": "error", "message": f"Checks failed, nothing stored: {type(e).__name__}: {e}"}
-        return go(f"/s/{sid}/review")
+        u = current_user(request, c)
+        S.get_system(c, sid)  # an unknown system is a 404 here, before any run starts
+        try:
+            r = checks.run(c, u, sid)
+        except S.Forbidden:
+            raise
+        except Exception as e:  # anything once the run has started, KeyError included
+            CHECKS[sid] = {"state": "error",
+                           "message": proposals.failure_message("Checks", e, "observations or proposals")}
+            return go(f"/s/{sid}/review")
+    finally:
+        c.close()
     n = len(r.proposals)
     msg = (f"Checks done: {r.evidence_checked} evidence file{'s' if r.evidence_checked != 1 else ''} checked"
            + (f" ({r.baselined} seen for the first time)" if r.baselined else "")
@@ -312,7 +339,8 @@ def review_context(c, sid: int) -> dict:
     return {**log_context(c, sid), "queue": queue, "recent": proposals.decided(c, sid),
             "scan_state": {k: v for k, v in SCANS.get(sid, {}).items() if k != "thread"},
             "check_state": CHECKS.pop(sid, None),
-            "bulkable": [q for q in queue if q["kind"] == "evidence_problem" and q["payload"].get("state") == "changed"],
+            "bulkable": [q for q in queue
+                         if q["kind"] == "evidence_problem" and q["payload"].get("state") == "changed"],
             "reasons": proposals.REJECT_REASONS, "who": names(c)}
 
 
@@ -331,7 +359,8 @@ def review_item(request: Request, sid: int, pid: int):
     c = conn()
     u = current_user(request, c)
     p = proposals.get(c, sid, pid)
-    proposals.mark_viewed(c, u, p)
+    if own_page_view(request):
+        proposals.mark_viewed(c, u, p)  # starts the time-on-proposal clock (OHL-H2)
     target = S.get_hazard(c, sid, p["target"]) if p["target"] and p["kind"] != "evidence_problem" else None
     return page(request, "review.html", user=u, p=p, target=target, error=request.query_params.get("error", ""),
                 **review_context(c, sid))

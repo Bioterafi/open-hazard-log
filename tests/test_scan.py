@@ -71,6 +71,7 @@ def test_scan_creates_proposals_and_one_run_event(conn, cso, ready):
     assert evs[0]["actor"].startswith("agent:")
     run = json.loads(evs[0]["after"])
     assert run["hidden_no_verified_quote"] == 1 and run["prompt_version"] == "scan-v1"
+    assert run["lenses_run"] == ["workflow", "failure_modes", "human_factors"]   # which lenses ran (OHL-H1)
     assert S.list_hazards(conn, ready)[0]["title"] == "Results shown against the wrong patient"
     assert len(S.list_hazards(conn, ready)) == 1                            # the log itself is untouched
 
@@ -113,12 +114,37 @@ def test_limit_and_overflow(conn, cso, ready):
                              "not_proposed_summary": ""})},
     {"raw_text": json.dumps(output(dict(candidate("x", [GOOD_DOC]), confidence="certain")))},
 ])
-def test_bad_output_stores_nothing(conn, cso, ready, kwargs):
+def test_bad_output_stores_no_proposals_and_records_the_failure(conn, cso, ready, kwargs):
     fake = FakeClient(output(candidate("x", [GOOD_DOC])), **kwargs)
     before = len(audit.events(conn))
     with pytest.raises(scan.ScanError):
         scan.run(conn, cso, ready, client=fake)
-    assert proposals.pending(conn, ready) == [] and len(audit.events(conn)) == before
+    assert proposals.pending(conn, ready) == []
+    new = audit.events(conn)[before:]
+    assert [e["action"] for e in new] == ["run_failed"] and new[0]["actor"].startswith("agent:")
+    assert json.loads(new[0]["after"])["error"].startswith("ScanError")
+    assert proposals.last_run(conn, ready) is None                      # a failed scan isn't a scan
+
+
+def test_api_error_is_recorded_too(conn, cso, ready):
+    class Down:
+        class beta:
+            class messages:
+                @staticmethod
+                def stream(**kw):
+                    raise ConnectionError("network unreachable")
+    with pytest.raises(ConnectionError):
+        scan.run(conn, cso, ready, client=Down())
+    e = audit.events(conn)[-1]
+    assert e["action"] == "run_failed" and "ConnectionError: network unreachable" in json.loads(e["after"])["error"]
+    assert audit.verify(conn).ok
+
+
+def test_preflight_problems_record_nothing(conn, cso, system):
+    before = len(audit.events(conn))
+    with pytest.raises(S.Invalid):
+        scan.run(conn, cso, system, client=FakeClient(output()))
+    assert len(audit.events(conn)) == before
 
 
 def test_preflight_rules(conn, cso, viewer, system, repo):
@@ -139,9 +165,11 @@ def test_preflight_rules(conn, cso, viewer, system, repo):
 def test_scan_module_has_no_write_path():
     src = Path(scan.__file__).read_text()
     for forbidden in ("create_hazard", "update_hazard", "create_control", "update_control", "issue_version",
-                      "audit.append", "tx(", "INSERT", "UPDATE "):
-        assert forbidden not in src, forbidden
-    assert set(re.findall(r"proposals\.(\w+)", src)) <= {"record_run", "recent_rejections"}
+                      "audit.append", "tx(", "_in_tx", "execute", "commit"):
+        assert forbidden not in src.lower(), forbidden
+    sql_write = r"\b(insert|replace)\s+(or\s+\w+\s+)?into\b|\bupdate\s+\w+\s+set\b|\bdelete\s+from\b"
+    assert not re.search(sql_write, src, re.I), "SQL write in the scan"
+    assert set(re.findall(r"proposals\.(\w+)", src)) <= {"record_run", "record_failure", "recent_rejections"}
 
 
 def test_rejections_feed_the_next_scan(conn, cso, ready):
@@ -154,6 +182,20 @@ def test_rejections_feed_the_next_scan(conn, cso, ready):
         fake.calls[0]["messages"][0]["content"]
 
 
+def test_check_rejections_never_reach_the_scan(conn, cso, ready):
+    """Rejection feedback is per pipeline: dismissing a check finding says nothing about hazards."""
+    proposals.record_run(conn, ready, {"run_id": "c1", "origin": "check", "started_by": cso["email"]},
+                         [{"kind": "evidence_problem", "target": "C-001",
+                           "payload": {"title": "Evidence changed: docs/x.md", "control": "C-001",
+                                       "location": "docs/x.md", "state": "changed", "fingerprint": "changed:1"}}])
+    p = proposals.pending(conn, ready)[0]
+    proposals.reject(conn, cso, ready, p["id"], "false_alarm")
+    fake = FakeClient(output())
+    scan.run(conn, cso, ready, client=fake)
+    prompt = fake.calls[0]["messages"][0]["content"]
+    assert "Evidence changed" not in prompt and "<rejected_proposals>\n(none)\n</rejected_proposals>" in prompt
+
+
 def test_shipped_demo_replay(conn, cso, system):
     """The demo's saved output runs through the real pipeline: 3 shown, the invented quote hidden."""
     root = Path(__file__).resolve().parent.parent
@@ -164,3 +206,36 @@ def test_shipped_demo_replay(conn, cso, system):
     r = scan.run(conn, cso, system, client=scan.ReplayClient(root / "seed" / "demo_scan_output.json"))
     assert len(r.shown) == 3 and r.hidden_no_quote == 1 and r.model_used == "replay:demo_scan_output.json"
     assert [p["kind"] for p in proposals.pending(conn, system)] == ["new_hazard", "new_hazard", "change_hazard"]
+
+
+def test_failed_replay_is_recorded_as_a_replay(conn, cso, ready, tmp_path):
+    saved = tmp_path / "bad.json"
+    saved.write_text("not json")
+    with pytest.raises(scan.ScanError):
+        scan.run(conn, cso, ready, client=scan.ReplayClient(saved))
+    after = json.loads(audit.events(conn)[-1]["after"])
+    assert after["model_used"] == "replay:bad.json"
+
+
+@pytest.mark.parametrize("db_writable", [True, False])
+def test_cli_scan_failure_says_whether_it_was_recorded(conn, cso, ready, tmp_path, monkeypatch, db_writable):
+    import sqlite3
+
+    from ohl import cli
+    bad = tmp_path / "bad.json"
+    bad.write_text("not json")
+    if not db_writable:
+        monkeypatch.setattr(proposals, "tx", lambda c: (_ for _ in ()).throw(sqlite3.OperationalError("database is locked")))
+    db_path = conn.execute("PRAGMA database_list").fetchone()["file"]
+    with pytest.raises(SystemExit) as e:
+        cli.main(["--db", db_path, "scan", "--system", str(ready), "--as", cso["email"], "--replay", str(bad)])
+    msg = str(e.value)
+    assert msg.startswith("Scan failed: ScanError:") and ".. " not in msg
+    assert msg.endswith("the failure is recorded in the audit trail.") is db_writable
+
+
+def test_api_error_text_ending_in_a_full_stop_reads_cleanly():
+    e = ConnectionError("Connection error.")
+    assert proposals.failure_message("Scan", e) == ("Scan failed: ConnectionError: Connection error. No proposals were "
+                                                    "stored, and the failure could not be recorded in the audit trail "
+                                                    "either. Note it yourself, fix the cause and run again.")

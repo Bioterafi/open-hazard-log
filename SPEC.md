@@ -3,6 +3,7 @@
 **Status:** draft for review · 16 Nov 2026 · cut down from the OHL product spec v0.1
 **Owner:** Dr Akanimoh Osutuk (Bioterafi)
 **Name:** Open Hazard Log by Bioterafi. **Licence:** Apache-2.0. **Landing page:** https://hazardlog.bioterafi.xyz
+**Direction:** this spec covers the hazard log, which is now one module of a wider clinical safety platform.
 
 ---
 
@@ -52,14 +53,14 @@ Read from the primary documents on 16 Nov 2026: DCB0129 specification v4.2 and i
 - The **2018 versions are still current**.
 - NHS England is reviewing both standards. The public consultation ran from 29 Jun to 11 Sep 2026 and is closed. **No response or revised text has been published yet.** Themes from the focus groups include a risk-tiered approach, AI governance and post-implementation monitoring.
 - So anything the standard leaves to the organisation goes in `config/`, not code. That covers the risk matrix, acceptability wording, hazard log columns and statuses. When the revised standards land, changing the config should be enough.
-- The legal basis is changing too: s250 of the Health and Social Care Act 2012 as amended, and the Data (Use and Access) Act 2025, which adds IT providers. OHL makes no claim about legal compliance.
+- The legal basis is changing too. s250 of the Health and Social Care Act 2012 was rewritten by the Health and Care Act 2022 from 7 July 2025, but standards already in effect, including these two, stay under the old "have regard" regime (SI 2025/807 reg 3). The Data (Use and Access) Act 2025 (in force 5 Feb 2026) lets a future standard apply to IT providers; no current standard does. OHL makes no claim about legal compliance.
 
 ### 3.2 Requirement → feature
 
 | Clause | Standard asks (paraphrased) | OHL v1 | Stays with people |
 |---|---|---|---|
 | 0129 2.3.1–2.3.2 | CSO is a suitably qualified, experienced clinician with current professional registration | `cso` users store name and registration body/number; both appear on every export | Appointing the CSO |
-| 0129 3.2.1 | The Clinical Risk Management Plan sets the risk acceptability criteria | Matrix and acceptability text come from `config/risk_matrix.toml`; exports name the scheme used | Writing and approving the Plan |
+| 0129 3.2.1 | The Clinical Risk Management Plan sets the risk acceptability criteria | Matrix and acceptability text come from `ohl/config/risk_matrix.toml`; exports name the scheme used | Writing and approving the Plan |
 | 0129 3.3.1 | Establish and maintain a Hazard Log (guidance: "a living document") | The app *is* the hazard log | — |
 | 0129 3.3.2 | CSO approves **each version** of the Hazard Log | **Issue version** (§7): the CSO freezes a numbered snapshot with their name, time, repo commit and chain hash | The approval |
 | 0129 3.3.3, 3.5.3 | An issued Hazard Log accompanies each Clinical Safety Case Report, which is made available to the deploying organisation | Export any issued version; deployer-actions export | Writing the Safety Case Report |
@@ -116,7 +117,7 @@ The severity and likelihood definitions from Tables 7–8 go into the config and
 ### 3.5 What OHL is not
 
 - **Not the Clinical Risk Management System, Plan or Safety Case Report.** Those stay as documents the organisation writes and approves. OHL holds the Hazard Log and its evidence, and makes it easy to issue alongside them.
-- **Doesn't classify medical devices.** Where a product is also a medical device, DCB0129 still applies alongside MHRA regulation. The standard describes itself as broadly consistent with ISO 14971.
+- **Doesn't classify medical devices.** Whether DCB0129 applies to a product that is also a medical device depends on NHS England's applicability steps 4 to 6, and DTAC v2.0 sends standalone medical devices past its DCB0129 questions (C1.1.2). The scope question is also open in the current review. The standard describes itself as broadly consistent with ISO 14971.
 - **Helps with DTAC section C1.** C1 asks for the hazard log, the safety case report, and the CSO's name and registration; OHL produces the issued hazard log and the CSO details.
 
 ---
@@ -210,7 +211,7 @@ Each lens covers normal use and fault conditions (DCB0129 4.3.1).
 - Model `claude-opus-5-5`, configurable per install. Structured outputs (`output_config.format` with the JSON schema). Effort `high` set explicitly (the model's default is `medium`). Streaming, since inputs and outputs are long.
 - Server-side fallback on refusal enabled (`fallbacks: "default"`). Because the answering model can then differ, store **`response.model` as `model_used`**, not the requested model.
 - The API no longer takes `temperature`, so runs are not bit-for-bit repeatable. Reproducibility means: store `prompt_version`, `model_used`, and a SHA-256 of the exact inputs on every proposal, and keep a small regression set of known hazards (§10, OHL-H6) to re-run when either changes.
-- Prompts live in `prompts/scan_v1.md`. Changing a prompt means a new file and a new version string, never an edit in place.
+- Prompts live in `ohl/prompts/scan_v1.md`, with each file's SHA-256 in `ohl/prompts/MANIFEST`. Changing a prompt means a new file, a new version string and a new MANIFEST line, never an edit in place; an edited file fails the tests and the scan refuses to run.
 - `ohl scan --replay <saved output>` runs the whole pipeline (inputs, quote check, proposals) without a model call, recorded as `replay:<file>`. Used for the demo and for offline regression checks (OHL-H6).
 
 ---
@@ -341,8 +342,10 @@ ohl/
   importer.py    CSV / XLSX import
   templates/     log.html, review.html, hazard.html, settings.html, base.html
   static/ohl.css (from design/mockup.html)
-prompts/scan_v1.md
-config/risk_matrix.toml
+  prompts/       scan_v1.md, MANIFEST (SHA-256 of each prompt file)
+  config/        risk_matrix.toml
+  seed/          ohl_self.toml (OHL's own hazard log)
+evals/hazard.scan/smoke.json   replay smoke set
 tests/
 ```
 

@@ -1,9 +1,10 @@
 """Agentic scan: read a system's docs and code, propose candidate hazards.
 
 Guardrails (SPEC.md section 5), all enforced here in code:
-- No write path to the log: the only write is proposals.record_run().
+- No write path to the log: the only writes are proposals.record_run() (proposals plus one
+  run event) and proposals.record_failure() (one run_failed event).
 - Quote check: every citation must appear verbatim in the cited source.
-- Schema check: the model's output must match SCHEMA or the run stores nothing.
+- Schema check: the model's output must match SCHEMA or the run stores no proposals.
 - Sources go in as delimited data; the prompt says never to follow them.
 - No run until the CSO has confirmed the sources contain no patient data.
 """
@@ -18,13 +19,14 @@ import re
 import subprocess
 import uuid
 from dataclasses import dataclass, field
+from importlib import resources
 from pathlib import Path
 
 from . import proposals
 from .db import now
 from .service import Forbidden, Invalid, get_system, list_hazards  # read-only use
 
-PROMPT_DIR = Path(__file__).resolve().parent.parent / "prompts"
+PROMPT_DIR = resources.files("ohl") / "prompts"  # shipped inside the package; MANIFEST holds each file's SHA-256
 PROMPT_VERSION = "scan-v1"
 DEFAULT_MODEL = os.environ.get("OHL_SCAN_MODEL", "claude-opus-5-5")
 DEFAULT_EFFORT = "high"
@@ -160,11 +162,36 @@ def _escape(text: str) -> str:
     return re.sub(r"</(document|documents)", r"<\\/\1", text, flags=re.I)
 
 
+def _sha(raw: bytes) -> str:
+    return hashlib.sha256(raw.replace(b"\r\n", b"\n")).hexdigest()  # same on a Windows checkout
+
+
+def prompt_manifest() -> dict[str, str]:
+    """prompts/MANIFEST: one 'sha256  file' line per prompt file (sha256sum format)."""
+    out = {}
+    for line in (PROMPT_DIR / "MANIFEST").read_text(encoding="utf-8").splitlines():
+        if line.strip() and not line.startswith("#"):
+            digest, name = line.split(maxsplit=1)
+            out[name.strip()] = digest
+    return out
+
+
+def prompt_template(version: str = PROMPT_VERSION) -> str:
+    """The prompt file for a version, refused if it was edited in place (OHL-H6).
+    A prompt change means a new file, a new version string and a new MANIFEST line."""
+    name = f"{version.replace('-', '_')}.md"
+    raw = (PROMPT_DIR / name).read_bytes()
+    if prompt_manifest().get(name) != _sha(raw):
+        raise ScanError(f"prompt file {name} doesn't match prompts/MANIFEST; it was edited in place. "
+                        "A prompt change needs a new file and version")
+    return raw.decode("utf-8")
+
+
 def build_prompts(system: dict, inputs: Inputs, hazards: list[dict], rejections: list[dict],
                   max_candidates: int) -> tuple[str, str]:
     scheme = system["risk_scheme"]
     uses_ai = bool((system["sources"] or {}).get("uses_ai"))
-    template = (PROMPT_DIR / f"{PROMPT_VERSION.replace('-', '_')}.md").read_text()
+    template = prompt_template()
     sev = "\n".join(f"- {s}: {scheme['labels'][s]}. {scheme['severity_help'][s]}" for s in scheme["severities"])
     lik = "\n".join(f"- {k}: {scheme['labels'][k]}. {scheme['likelihood_help'][k]}" for k in scheme["likelihoods"])
     ai = ("fabrication, omission, automation bias, deskilling, distribution shift, subgroup under-performance, "
@@ -177,7 +204,8 @@ def build_prompts(system: dict, inputs: Inputs, hazards: list[dict], rejections:
         f"{h['ref']}: {h['title']}" + (f" | causes: {'; '.join(c['text'] for c in h['causes'])}" if h["causes"] else "")
         for h in hazards) or "(none yet)"
     rejected = "\n".join(f"- {r['title']} | reason: {r['reason']}" for r in rejections) or "(none)"
-    tree = "\n".join(inputs.tree) + (f"\n… {inputs.tree_truncated} more files not listed" if inputs.tree_truncated else "")
+    more = f"\n… {inputs.tree_truncated} more files not listed" if inputs.tree_truncated else ""
+    tree = "\n".join(inputs.tree) + more
     docs = "\n".join(f'<document path="{p}">\n{_escape(t)}\n</document>' for p, t in inputs.sources.items())
     user = (f"<system>\nName: {system['name']} {system['version']}\n"
             f"Contains AI or machine-learning components: {'yes' if uses_ai else 'no'}\n</system>\n\n"
@@ -237,8 +265,9 @@ class ReplayClient:
     def __init__(self, path: str | Path):
         from types import SimpleNamespace as NS
         self.path = Path(path)
+        self.replay_label = f"replay:{self.path.name}"
         text = self.path.read_text()
-        self._msg = NS(content=[NS(type="text", text=text)], model=f"replay:{self.path.name}",
+        self._msg = NS(content=[NS(type="text", text=text)], model=self.replay_label,
                        stop_reason="end_turn", stop_details=None, usage=None)
         self.beta = NS(messages=NS(stream=lambda **kw: self))
 
@@ -343,17 +372,35 @@ def preflight(conn, user: dict, system_id: int) -> tuple[dict, Inputs]:
 
 def run(conn, user: dict, system_id: int, *, client=None, model: str | None = None, effort: str = DEFAULT_EFFORT,
         max_proposals: int | None = None) -> Result:
+    """Preflight problems stop the scan before it starts and record nothing. A scan that fails
+    after starting stores no proposals and leaves one `run_failed` event when the database
+    can still be written (OHL-H4)."""
     system, inputs = preflight(conn, user, system_id)
+    model = model or DEFAULT_MODEL
+    run_id = uuid.uuid4().hex[:12]
+    started = now()
+    replayed = getattr(client, "replay_label", "")  # a failed replay must not look like a model call
+    try:
+        return _run(conn, user, system, inputs, client=client, model=model, effort=effort,
+                    max_proposals=max_proposals, run_id=run_id, started=started)
+    except Exception as e:
+        proposals.record_failure(conn, system_id, {"run_id": run_id, "origin": "scan", "started_by": user["email"],
+                                                   "started_at": started, "model_requested": model, "effort": effort,
+                                                   "prompt_version": PROMPT_VERSION,
+                                                   **({"model_used": replayed} if replayed else {})}, e)
+        raise
+
+
+def _run(conn, user: dict, system: dict, inputs: Inputs, *, client, model: str, effort: str,
+         max_proposals: int | None, run_id: str, started: str) -> Result:
+    system_id = system["id"]
     limit = max_proposals or int((system["sources"] or {}).get("max_proposals") or 15)
 
     hazards = list_hazards(conn, system_id)
     system_prompt, user_msg = build_prompts(system, inputs, hazards, proposals.recent_rejections(conn, system_id),
                                             limit)
     schema = build_schema(system["risk_scheme"])
-    model = model or DEFAULT_MODEL
     inputs_sha = hashlib.sha256(json.dumps([model, effort, system_prompt, user_msg]).encode()).hexdigest()
-    run_id = uuid.uuid4().hex[:12]
-    started = now()
 
     if client is None:
         import anthropic
@@ -387,6 +434,7 @@ def run(conn, user: dict, system_id: int, *, client=None, model: str | None = No
         "run_id": run_id, "origin": "scan", "started_by": user["email"], "started_at": started, "finished_at": now(),
         "model_requested": model, "model_used": getattr(msg, "model", model), "effort": effort,
         "prompt_version": PROMPT_VERSION,
+        "prompt_file_sha256": prompt_manifest().get(f"{PROMPT_VERSION.replace('-', '_')}.md", ""),
         "prompt_sha256": hashlib.sha256(system_prompt.encode()).hexdigest(), "inputs_sha256": inputs_sha,
         "sources": sorted(inputs.sources), "skipped": inputs.skipped, "lenses_run": data["lenses_run"],
         "candidates": len(candidates), "hidden_no_verified_quote": hidden, "over_limit": over,

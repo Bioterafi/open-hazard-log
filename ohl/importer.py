@@ -21,6 +21,7 @@ from openpyxl import load_workbook
 from . import audit, risk
 from . import service as S
 from .db import tx
+from .export import CSV_GUARD_MARK, csv_unguard
 
 REF_PREFIX = re.compile(r"^([A-Za-z][\w-]*\d+):\s*(.*)$")
 TAG = re.compile(r"^\[(test|warning)\]\s*", re.I)
@@ -49,14 +50,24 @@ def _cell_text(v) -> str:
     return str(v).strip()
 
 
+def _csv_cell(text: str) -> str:
+    """Undo the exporter's formula guard: "'=1+1" was "=1+1", "''quoted" was "'quoted"
+    (see export.csv_safe). Text the exporter wouldn't have guarded is left alone."""
+    return csv_unguard(text)
+
+
 def read_csv(data: bytes) -> tuple[list[str], list[list[str]]]:
     text = data.decode("utf-8-sig")
-    lines = [ln for ln in text.splitlines(keepends=True) if not ln.startswith("#")]
-    rows = list(csv.reader(io.StringIO("".join(lines))))
+    rows = list(csv.reader(io.StringIO(text, newline="")))
+    guarded = False
+    while rows and (not any(c.strip() for c in rows[0]) or rows[0][0].lstrip().startswith("#")):
+        guarded = guarded or (bool(rows[0]) and rows[0][0].strip() == CSV_GUARD_MARK)
+        rows.pop(0)  # header lines above the column names (OHL exports start with "# Hazard log: ...")
     rows = [r for r in rows if any(c.strip() for c in r)]
     if not rows:
         raise S.Invalid("the CSV file has no header row")
-    return [c.strip() for c in rows[0]], [[c.strip() for c in r] for r in rows[1:]]
+    cell = _csv_cell if guarded else (lambda t: t)  # only files that say they're guarded carry the apostrophes
+    return [c.strip() for c in rows[0]], [[cell(c.strip()) for c in r] for r in rows[1:]]
 
 
 def _is_ref_header(text: str) -> bool:
@@ -182,7 +193,7 @@ def import_bytes(conn, user: dict, system_id: int, data: bytes, filename: str) -
 
     res = Result()
     keys = [classify(h) for h in headers]
-    res.ignored_columns = [h for h, k in zip(headers, keys) if h and k is None]
+    res.ignored_columns = [h for h, k in zip(headers, keys, strict=False) if h and k is None]
     if ("title",) not in keys:
         raise S.Invalid("no hazard column found (expected 'Hazard', 'Hazard name' or 'Hazard Description / Hazard')")
 
@@ -195,7 +206,7 @@ def import_bytes(conn, user: dict, system_id: int, data: bytes, filename: str) -
 
     for i, row in enumerate(rows, start=1):
         cells = {}
-        for k, v in zip(keys, row):
+        for k, v in zip(keys, row, strict=False):
             if k and v:
                 cells.setdefault(k, v)
         if not cells.get(("title",)):

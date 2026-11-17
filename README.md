@@ -2,7 +2,8 @@
 
 A DCB0129/DCB0160 hazard log where agents propose and the Clinical Safety Officer decides.
 Open source under the Apache-2.0 licence. Website: https://hazardlog.bioterafi.xyz · Source: https://github.com/Bioterafi/open-hazard-log
-The spec is in [SPEC.md](SPEC.md). Built so far: **M1** (the log), **M2** (agent scan and review) and **M3** (evidence and code-change checks).
+This hazard log is the first module of a wider clinical safety platform covering the whole DCB0129/DCB0160 lifecycle.
+The spec is in [SPEC.md](SPEC.md). Built so far: **M1** (the log), **M2** (agent scan and review), **M3** (evidence and code-change checks) and **M4** (release 0.1.1: making the public release safe to run).
 
 ## What M1 does
 
@@ -38,6 +39,18 @@ To run them nightly, add a cron line such as:
 
 The demo builds `demo-repo/`, a made-up git repository. It deletes a test, changes linked code and edits a doc, so the checks have something to find.
 
+## What M4 (0.1.1) adds
+
+- **Only this computer, only its own pages.** The app answers only requests addressed to `localhost` or a loopback address such as `127.0.0.1` (anything else gets 400) and coming from this computer (anything else gets 403), even if it's started with `uvicorn --host 0.0.0.0`. Requests carrying proxy headers (`Via`, `Forwarded`, `X-Forwarded-*`, `X-Real-IP` and the like) are refused too, but a proxy that adds none can't be detected, so never run it behind one. Every change needs the token from your own browser session; a change the browser reports as coming from another page or from inside a frame is refused; and no page can be shown in a frame. Together these stop a web page you visit from acting as you, by DNS rebinding, a hidden form or clickjacking. Only your own visit to a proposal starts its time-on-proposal clock.
+- **Runs stored whole or not at all.** A check run stores its observations, its proposals and its run event in one transaction, so a failure part-way can't lose a re-review. A scan or check that fails after starting leaves a `run_failed` event in the audit trail, and doesn't count as a fresh run. If the database can't take even that record (it's locked, full or read-only), the message says so instead of claiming it.
+- **Feedback per pipeline.** Rejected check findings no longer reach the scan prompt; only rejected scan proposals do.
+- **Safe exports.** XLSX cells are stored as text, so a hazard titled `=1+1` can't run as a formula when another organisation opens the file. In CSV every cell is quoted, and text that a spreadsheet could take as the start of a formula (at the start of a cell, or after `;`, a tab or a line break) gets a leading apostrophe. Importing an OHL CSV export removes those apostrophes again; other CSV files are imported exactly as they are. XLSX is the better format to share.
+- **Packaged resources.** The prompt, risk matrix and OHL's own hazard log are inside the package, so an installed wheel works away from a checkout. `ohl/prompts/MANIFEST` holds each prompt's SHA-256: an edited prompt fails the tests and the scan refuses to run. Released prompts' hashes are also pinned in the tests, and CI refuses a pull request that changes an existing prompt or MANIFEST line.
+- **Replay smoke set.** Ten saved model outputs (`evals/hazard.scan/smoke.json`) run through the real scan pipeline on every change. It checks the pipeline is deterministic, not how well a model finds hazards.
+- **`ohl backup`** copies the database while the app is running, leaves out the session secret, and verifies the copy. `ohl verify` opens a database read-only.
+- **`ohl issue`** issues a version from the command line.
+- **CI** on every push to `main` and every pull request: tests, lint, a dependency audit, the demo, and a clean install of the built wheel that also serves a page. uv is pinned, actions are pinned to commit SHAs, and every Python package comes from `uv.lock` or `build-constraints.txt` (the build backend) with its hash checked.
+
 ## Run it
 
 You need [uv](https://docs.astral.sh/uv/) and git.
@@ -50,7 +63,7 @@ uv sync
 uv run ohl --db demo.db serve --as cso@demo.local     # then open http://127.0.0.1:8000
 ```
 
-**There's no login.** The app runs on one computer as one named person, chosen with `--as` (or the only CSO, if there is just one). Every change is still recorded under that person's name. Because anyone who can reach the app acts as that person, it only listens on this computer (127.0.0.1) and refuses any other address.
+**There's no login.** The app runs on one computer as one named person, chosen with `--as` (or the only CSO, if there is just one). Every change is still recorded under that person's name. Because anyone who can reach the app acts as that person, it only listens on this computer (127.0.0.1), and it answers only requests from this computer addressed to `localhost` or a loopback address. Don't put it behind a proxy.
 
 ## Real use
 
@@ -69,7 +82,14 @@ uv run ohl system configure --system 1 --repo ~/code/product --docs docs --code-
 uv run ohl scan --system 1 --as you@trust.nhs.uk
 ```
 
-Other commands: `ohl seed-self` (OHL's own hazard log, unrated), `ohl export`, `ohl audit`, `ohl verify [--file audit.json]`.
+Back up while the app is running, and keep copies on another computer:
+
+```bash
+uv run ohl backup ohl-2026-11-17.db       # a verified copy, without the session secret
+uv run ohl --db ohl-2026-11-17.db verify
+```
+
+Other commands: `ohl issue --system 1 --confirm --as you@trust.nhs.uk` (sign a version), `ohl seed-self [--repo .]` (OHL's own hazard log, unrated), `ohl export`, `ohl audit`, `ohl verify [--file audit.json]`.
 
 ## Landing page
 
@@ -91,7 +111,11 @@ Only the landing page is deployed. The app is never deployed: it has no login an
 
 ```bash
 uv run pytest
+uv run ruff check ohl tests
+./scripts/wheel_smoke.sh      # build the wheel, install it in a clean virtualenv, run a replay scan
 ```
+
+CI runs these, the demo and a dependency audit on every push to `main` and every pull request (`.github/workflows/ci.yml`).
 
 ## Layout
 
@@ -107,10 +131,15 @@ ohl/dashboard.py  dashboard numbers
 ohl/importer.py   CSV/XLSX import (template layout, matched by header text)
 ohl/export.py     CSV/XLSX/JSON export, deployer actions
 ohl/app.py        web pages; templates/ and static/ohl.css
+ohl/local.py      answers only this computer (Host header and client address)
 ohl/cli.py        command line
-prompts/scan_v1.md        the scan prompt (a change means a new file and version)
-config/risk_matrix.toml   default scheme (DCB0129 guidance Tables 7-10, an example)
-seed/             OHL's own hazards; a made-up sample log, demo docs and a saved scan output
+ohl/prompts/      the scan prompt, and MANIFEST with each prompt file's SHA-256
+ohl/config/       risk_matrix.toml: default scheme (DCB0129 guidance Tables 7-10, an example)
+ohl/seed/         ohl_self.toml: OHL's own hazard log; each control in place links to its test
+seed/             demo only: a made-up sample log, demo docs and a saved scan output
+evals/            hazard.scan/smoke.json: the replay smoke set
+scripts/          demo.sh, wheel_smoke.sh
+build-constraints.txt   the build backend, pinned with hashes
 ```
 
 The look follows anthropic.com's design scheme: ivory page, serif titles, rounded panels and pill buttons (style only, no Anthropic marks). Newsreader and Hanken Grotesk load from Google Fonts; where that's blocked, pages fall back to Georgia and the system sans.
@@ -122,7 +151,7 @@ The look follows anthropic.com's design scheme: ivory page, serif titles, rounde
 - **The agent scan supplements a hazard workshop.** It never replaces one.
 - **No login.** Run it on your own computer only. `ohl serve` refuses to listen anywhere else. Shared or hosted use needs real sign-in first.
 - **No patient data.** Scans read docs and code only, after the CSO confirms the sources contain no patient-identifiable data.
-- Open Hazard Log keeps its own hazard log (`ohl seed-self`). Report safety concerns about the tool itself as issues marked "safety".
+- Open Hazard Log keeps its own hazard log (`ohl seed-self --repo .`), with each control marked in place linked to the test that shows it. Each tagged release gets an issued version of it; see [docs/RELEASING.md](docs/RELEASING.md). Report safety concerns about the tool itself as issues marked "safety".
 
 ## Contributing
 
@@ -130,7 +159,8 @@ Issues and pull requests are welcome.
 
 - Run `uv run pytest` before sending a change. The suite never calls the Anthropic API.
 - Some tests guard safety properties: the scan and checks have no write path to the log, every quote is checked, ratings are blind, and the audit chain catches tampering. Don't weaken them to make a change pass.
-- Prompt changes get a new file and version (`prompts/scan_v2.md`), never an edit in place.
+- Prompt changes get a new file and version (`ohl/prompts/scan_v2.md`) plus a line in `ohl/prompts/MANIFEST`, never an edit in place.
+- Changing an expectation in `evals/hazard.scan/smoke.json` is a safety-relevant change: say why in the commit.
 
 ## Licence
 

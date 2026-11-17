@@ -138,17 +138,30 @@ class Result:
 
 
 def run(conn, user: dict, system_id: int) -> Result:
+    """One check run, stored whole or not at all. A run that fails after starting changes
+    nothing, so the next run finds the same problems, and leaves a `run_failed` event when
+    the database can still be written (the failure note says which)."""
     if user["role"] not in ("cso", "contributor"):
         raise Forbidden("Only a CSO or contributor can run the checks.")
     system = get_system(conn, system_id)
+    run_id = uuid.uuid4().hex[:12]
+    stamp = now()
+    try:
+        return _run(conn, user, system, run_id, stamp)
+    except Exception as e:
+        proposals.record_failure(conn, system_id, {"run_id": run_id, "origin": "check", "started_by": user["email"],
+                                                   "started_at": stamp}, e)
+        raise
+
+
+def _run(conn, user: dict, system: dict, run_id: str, stamp: str) -> Result:
+    system_id = system["id"]
     src = system["sources"] or {}
     repo = Path(src["repo"]).expanduser() if src.get("repo") else None
     if repo and not repo.is_dir():
         repo = None
-    run_id = uuid.uuid4().hex[:12]
     res = Result(run_id=run_id, proposals=[])
     items: list[dict] = []
-    stamp = now()
     hazards = {h["ref"]: h for h in list_hazards(conn, system_id)}
     obs = observations(conn, system_id)
     pending_ev = {(p["payload"].get("control"), p["payload"].get("location"))
@@ -159,10 +172,12 @@ def run(conn, user: dict, system_id: int) -> Result:
     for c in list_controls(conn, system_id):
         if c["status"] == "invalid":
             continue  # already known not to hold
+        done: set[str] = set()  # a control may name several tests in one file: check each file once
         for e in c["evidence"]:
             loc = (e.get("path_or_url") or "").strip()
-            if not loc:
+            if not loc or loc in done:
                 continue
+            done.add(loc)
             key = (c["ref"], loc)
             prev = obs.get(key, {})
             baseline, ack = prev.get("baseline_sha256", ""), prev.get("ack", "")
@@ -240,7 +255,11 @@ def run(conn, user: dict, system_id: int) -> Result:
         current = None
         res.notes.append("no repository set; code changes not checked")
 
-    # ---- record observations, then the run and its proposals
+    # ---- record observations, the run and its proposals in one transaction
+    summary = {"run_id": run_id, "origin": "check", "started_by": user["email"], "started_at": stamp,
+               "finished_at": now(), "model_used": "", "prompt_version": "", "inputs_sha256": "",
+               "evidence_checked": res.evidence_checked, "baselined": res.baselined, "problems": res.problems,
+               "code_changed": res.code_changed, "commit": current or "", "notes": res.notes}
     with tx(conn):
         for ref, loc, baseline, seen, state, ack in updates:
             conn.execute(
@@ -252,10 +271,6 @@ def run(conn, user: dict, system_id: int) -> Result:
         if current:
             conn.execute("INSERT INTO check_state (system_id, key, value) VALUES (?, 'last_commit', ?)"
                          " ON CONFLICT (system_id, key) DO UPDATE SET value = excluded.value", (system_id, current))
-    summary = {"run_id": run_id, "origin": "check", "started_by": user["email"], "started_at": stamp,
-               "finished_at": now(), "model_used": "", "prompt_version": "", "inputs_sha256": "",
-               "evidence_checked": res.evidence_checked, "baselined": res.baselined, "problems": res.problems,
-               "code_changed": res.code_changed, "commit": current or "", "notes": res.notes}
-    res.proposals = proposals.record_run(conn, system_id, summary, items)
+        res.proposals = proposals.record_run(conn, system_id, summary, items, _in_tx=True)
     return res
 

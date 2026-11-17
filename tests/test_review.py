@@ -112,3 +112,12 @@ def test_only_cso_decides_and_only_once(conn, cso, viewer, queued):
     proposals.approve(conn, cso, sid, change)
     with pytest.raises(S.Invalid, match="already been decided"):
         proposals.reject(conn, cso, sid, change, "duplicate")
+
+
+def test_hazard_proposals_can_never_be_bulk_approved(conn, cso, queued):
+    """Bulk re-confirm is for changed evidence only; every hazard is decided one at a time (OHL-H2)."""
+    sid, new, change = queued
+    for ids in ([new], [change], [new, change]):
+        with pytest.raises(S.Invalid, match="can't be bulk re-confirmed"):
+            proposals.bulk_reconfirm(conn, cso, sid, ids, confirmed=True)
+    assert len(proposals.pending(conn, sid)) == 2

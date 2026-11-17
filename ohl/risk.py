@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import tomllib
+from importlib.resources import files
 from pathlib import Path
 
-DEFAULT_SCHEME_PATH = Path(__file__).resolve().parent.parent / "config" / "risk_matrix.toml"
+DEFAULT_SCHEME = files("ohl") / "config" / "risk_matrix.toml"  # shipped inside the package
 
 
 def load_default_scheme(path: Path | None = None) -> dict:
-    with open(path or DEFAULT_SCHEME_PATH, "rb") as f:
-        scheme = tomllib.load(f)
+    scheme = tomllib.loads((Path(path) if path else DEFAULT_SCHEME).read_text(encoding="utf-8"))
     validate(scheme)
     return scheme
 

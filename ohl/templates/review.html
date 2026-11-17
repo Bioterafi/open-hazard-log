@@ -133,7 +133,7 @@
         <dl style="margin-top:8px">
           <dt>Yours</dt><dd><span class="risk r{{ r.risk }}"><b>{{ r.risk }}</b> {{ risk.short(scheme, r.risk) }}</span><br>
             <span class="faint">{{ risk.label(scheme, r.severity) }} × {{ risk.label(scheme, r.likelihood) }}</span>{% if r.rationale %}<div class="small">{{ r.rationale }}</div>{% endif %}</dd>
-          <dt>Agent</dt><dd><span class="risk r{{ sr_risk }}"><b>{{ sr_risk }}</b> {{ risk.short(scheme, sr_risk) }}</span>{% if (sr.severity, sr.likelihood) != (r.severity, r.likelihood) %} <span class="tag">differs from yours</span>{% endif %}<br>
+          <dt>Agent</dt><dd data-agent-rating><span class="risk r{{ sr_risk }}"><b>{{ sr_risk }}</b> {{ risk.short(scheme, sr_risk) }}</span>{% if (sr.severity, sr.likelihood) != (r.severity, r.likelihood) %} <span class="tag">differs from yours</span>{% endif %}<br>
             <span class="faint">{{ risk.label(scheme, sr.severity) }} × {{ risk.label(scheme, sr.likelihood) }}</span><div class="small">{{ sr.rationale }}</div></dd>
         </dl>
         <p class="faint small" style="margin:8px 0 0">Approve uses your rating. To change it, use Edit.</p>

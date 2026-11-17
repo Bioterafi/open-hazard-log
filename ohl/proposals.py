@@ -1,13 +1,15 @@
 """Proposals: what agents and checks suggest, and the CSO's decisions on them.
 
-`record_run` is the only write the scan can make. Decisions (approve, edit, reject)
-are CSO-only and change the log through service.py, in the same transaction as
-the decision's audit event.
+The scan and the checks can make exactly two writes: `record_run` (their proposals plus
+one run event) and `record_failure` (one run_failed event, nothing else). Decisions
+(approve, edit, reject) are CSO-only and change the log through service.py, in the same
+transaction as the decision's audit event.
 """
 
 from __future__ import annotations
 
 import json
+from contextlib import nullcontext
 from datetime import datetime
 
 from . import audit, risk
@@ -56,9 +58,11 @@ def decided(conn, system_id: int, limit: int = 10) -> list[dict]:
         (system_id, limit))]
 
 
-def recent_rejections(conn, system_id: int, limit: int = 30) -> list[dict]:
-    rows = conn.execute("SELECT payload, reject_reason FROM proposal WHERE system_id = ? AND status = 'rejected'"
-                        " ORDER BY decided_at DESC LIMIT ?", (system_id, limit))
+def recent_rejections(conn, system_id: int, origin: str = "scan", limit: int = 30) -> list[dict]:
+    """Rejected proposals from one pipeline, fed back into that pipeline's next run (never another's)."""
+    rows = conn.execute("SELECT payload, reject_reason FROM proposal WHERE system_id = ? AND origin = ?"
+                        " AND status = 'rejected' ORDER BY decided_at DESC, id DESC LIMIT ?",
+                        (system_id, origin, limit))
     return [{"title": json.loads(r["payload"]).get("title", ""), "reason": r["reject_reason"]} for r in rows]
 
 
@@ -68,17 +72,25 @@ def last_run(conn, system_id: int, origin: str = "scan") -> dict | None:
     return dict(json.loads(r["after"]), at=r["at"]) if r else None
 
 
-# ---------------------------------------------------------------- the scan's only write
+# ---------------------------------------------------------------- the only writes agents and checks make
 
-def record_run(conn, system_id: int, run: dict, items: list[dict]) -> list[int]:
+def _actor(run: dict) -> str:
+    """Scans are recorded as the agent; checks as checks, because they aren't AI."""
+    return f"agent:{run['run_id']}" if run.get("origin", "scan") == "scan" else f"check:{run['run_id']}"
+
+
+def record_run(conn, system_id: int, run: dict, items: list[dict], *, _in_tx: bool = False) -> list[int]:
     """Store one agent run's proposals plus a single run event, atomically.
 
     `run` holds run_id, model_used, prompt_version, inputs_sha256, started_by and the
     summary; each item holds kind, target, payload, reasoning, assumptions, citations,
-    confidence and suggested_rating.
+    confidence and suggested_rating. `_in_tx` lets the checks store their observations
+    in the same transaction, so a run is stored whole or not at all.
     """
+    if _in_tx and not conn.in_transaction:
+        raise RuntimeError("record_run(_in_tx=True) must run inside the caller's write transaction")
     ids = []
-    with tx(conn):
+    with (nullcontext() if _in_tx else tx(conn)):
         for it in items:
             if it["kind"] not in KINDS:
                 raise ValueError(f"unknown proposal kind {it['kind']}")
@@ -92,12 +104,59 @@ def record_run(conn, system_id: int, run: dict, items: list[dict]) -> list[int]:
                  run.get("model_used", ""), run.get("prompt_version", ""), run.get("inputs_sha256", ""), now()))
             ids.append(cur.lastrowid)
         origin = run.get("origin", "scan")
-        actor = f"agent:{run['run_id']}" if origin == "scan" else f"check:{run['run_id']}"  # checks aren't AI
-        audit.append(conn, actor=actor, action=f"{origin}_run",
+        audit.append(conn, actor=_actor(run), action=f"{origin}_run",
                      system_id=system_id, object_ref=f"run:{run['run_id']}",
                      after={**{k: v for k, v in run.items() if k != "origin"}, "proposals": [pid(i) for i in ids]},
                      note=f"started by {run.get('started_by', '')}")
     return ids
+
+
+_OUTCOMES: list[tuple[BaseException, bool, str]] = []  # only for errors that won't take an attribute
+
+
+def record_failure(conn, system_id: int, run: dict, error: BaseException) -> bool:
+    """A run that started but failed: one `run_failed` event, so a failure is never silent (OHL-H4).
+
+    Nothing else from the run is stored. The failure that stopped the run (a locked or full
+    database) can stop this write too, so the outcome is kept for `failure_note`: the person
+    who started the run is told the truth either way.
+    """
+    try:
+        with tx(conn):
+            audit.append(conn, actor=_actor(run), action="run_failed", system_id=system_id,
+                         object_ref=f"run:{run['run_id']}",
+                         after={**run, "failed_at": now(), "error": f"{type(error).__name__}: {error}"[:500]},
+                         note=f"started by {run.get('started_by', '')}")
+        outcome = (True, "")
+    except Exception as e:
+        outcome = (False, f"{type(e).__name__}: {e}")
+    try:
+        error.ohl_failure_outcome = outcome            # travels with the error, freed with it
+    except Exception:                                  # a frozen exception: keep it briefly instead
+        _OUTCOMES.append((error, *outcome))
+        del _OUTCOMES[:-8]
+    return outcome[0]
+
+
+def failure_message(what: str, error: BaseException, stored: str = "proposals") -> str:
+    """'Scan failed: <error>. <failure_note>', without a doubled full stop."""
+    return f"{what} failed: {type(error).__name__}: {str(error).rstrip('. ')}. {failure_note(error, stored)}"
+
+
+def failure_note(error: BaseException, stored: str = "proposals") -> str:
+    """What a person is told after a run fails: only claims the audit-trail record if it was written."""
+    outcome = getattr(error, "ohl_failure_outcome", None)
+    if outcome is None:
+        for i, (e, r, w) in enumerate(_OUTCOMES):
+            if e is error:
+                outcome = (r, w)
+                del _OUTCOMES[i]                       # asked once; don't keep the error alive
+                break
+    recorded, why = outcome or (False, "")
+    if recorded:
+        return f"No {stored} were stored; the failure is recorded in the audit trail."
+    return (f"No {stored} were stored, and the failure could not be recorded in the audit trail either"
+            + (f" ({why})" if why else "") + ". Note it yourself, fix the cause and run again.")
 
 
 # ---------------------------------------------------------------- review

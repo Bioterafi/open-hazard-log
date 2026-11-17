@@ -6,3 +6,5 @@ __pycache__/
 .pytest_cache/
 demo-repo/
 .wrangler/
+# Internal roadmap: kept on this computer, not published
+docs/PLATFORM_PLAN.md

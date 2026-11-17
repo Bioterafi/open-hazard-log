@@ -196,6 +196,90 @@ def connect(path: str | Path | None = None, init: bool = True) -> sqlite3.Connec
     return conn
 
 
+def connect_ro(path: str | Path) -> sqlite3.Connection:
+    """Open an existing database read-only (for verifying a backup without changing it).
+    With no write-ahead log beside it, nothing has it open for writing, so it's opened as
+    immutable: no side files are made, and it works on read-only media too."""
+    p = Path(path)
+    if not p.is_file():
+        raise FileNotFoundError(f"no database at {p}")
+    wal = p.with_name(p.name + "-wal")
+    flags = "mode=ro" + ("" if wal.exists() and wal.stat().st_size else "&immutable=1")
+    conn = sqlite3.connect(f"{p.resolve().as_uri()}?{flags}", uri=True, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def backup(src: sqlite3.Connection, out: str | Path) -> None:
+    """A consistent copy of a live database (VACUUM INTO), without the session secret.
+
+    - The copy is made and scrubbed in a private temporary folder, then rebuilt with VACUUM,
+      so no byte of the secret is left even in free space. A file holding the secret never
+      appears where the backup goes (a synced folder, a USB stick).
+    - It is written next to `out` under a '.partial' name, flushed to disk, then given its
+      real name with a hard link, which never replaces an existing file. A run that is
+      killed part-way never leaves a file under the backup's name; a '.partial' file left by
+      a run killed outright (power cut) is removed by the next backup to that name.
+    - Where hard links aren't supported (FAT and exFAT USB sticks), the name is claimed with
+      an exclusive create and the copy written into it; a failure removes only that file.
+    """
+    import shutil
+    import tempfile
+    out = Path(out)
+    if out.exists():
+        raise FileExistsError(f"{out} already exists; choose a new file name")
+    if not out.parent.is_dir():
+        raise FileNotFoundError(f"the folder {out.parent} doesn't exist; create it first")
+    import time
+    for old in out.parent.glob(f".{out.name}.partial-*"):  # left by a run killed outright
+        try:
+            if time.time() - old.stat().st_mtime > 3600:
+                old.unlink()
+        except OSError:
+            pass
+    part = out.with_name(f".{out.name}.partial-{secrets.token_hex(4)}")
+    with tempfile.TemporaryDirectory(prefix="ohl-backup-") as work:
+        tmp = Path(work) / "copy.db"
+        src.execute("VACUUM INTO ?", (str(tmp),))
+        copy = sqlite3.connect(tmp, isolation_level=None)
+        try:
+            copy.execute("PRAGMA secure_delete = ON")  # overwrite the secret's bytes, don't just unlink them
+            copy.execute("DELETE FROM meta WHERE key = 'secret'")
+            copy.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('backup_at', ?)", (now(),))
+            copy.execute("VACUUM")                     # and rebuild, so no free page keeps any of it
+        finally:
+            copy.close()
+        try:
+            with open(tmp, "rb") as r, open(part, "xb") as w:
+                shutil.copyfileobj(r, w)
+                w.flush()
+                os.fsync(w.fileno())
+            try:
+                os.link(part, out)                     # fails if `out` exists: never overwrites
+            except FileExistsError:
+                raise FileExistsError(f"{out} already exists; choose a new file name") from None
+            except OSError:                            # no hard links here (FAT, exFAT, some shares)
+                _copy_exclusive(tmp, out)
+        finally:
+            part.unlink(missing_ok=True)
+
+
+def _copy_exclusive(src: Path, out: Path) -> None:
+    import shutil
+    try:
+        w = open(out, "xb")                            # claims the name, or fails: never overwrites
+    except FileExistsError:
+        raise FileExistsError(f"{out} already exists; choose a new file name") from None
+    try:
+        with w, open(src, "rb") as r:
+            shutil.copyfileobj(r, w)
+            w.flush()
+            os.fsync(w.fileno())
+    except BaseException:
+        out.unlink(missing_ok=True)                    # only ever the file this run created
+        raise
+
+
 @contextmanager
 def tx(conn: sqlite3.Connection):
     """One write transaction. BEGIN IMMEDIATE takes the write lock up front, so two
@@ -204,7 +288,13 @@ def tx(conn: sqlite3.Connection):
     try:
         yield conn
     except BaseException:
-        conn.execute("ROLLBACK")
+        # SQLite may already have rolled back (a full disk does that). A failed ROLLBACK
+        # must never replace the error that caused it.
+        if conn.in_transaction:
+            try:
+                conn.execute("ROLLBACK")
+            except sqlite3.Error:
+                pass
         raise
     else:
         conn.execute("COMMIT")

@@ -1,0 +1,99 @@
+# Tests, lint, dependency audit, the demo, and a clean install of the built wheel.
+# Third-party actions are pinned to commit SHAs (Dependabot keeps them current), uv is
+# pinned, every Python package comes from uv.lock or build-constraints.txt with its hash
+# checked, and the token can only read the repository.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          version: "0.13.7"
+          python-version: "3.12"
+      - name: Install dependencies from uv.lock (hashes checked)
+        run: uv sync --locked --no-install-project
+      - name: Build and install Open Hazard Log with the hash-pinned build backend
+        run: |
+          uv build --wheel --build-constraints build-constraints.txt --require-hashes -o "$RUNNER_TEMP/dist"
+          uv pip install --no-deps "$RUNNER_TEMP"/dist/*.whl
+      - name: Lint
+        run: uv run --no-sync ruff check ohl tests
+      - name: Tests (never call the Anthropic API)
+        run: uv run --no-sync pytest -q
+      - name: Demo
+        env:
+          UV_NO_SYNC: "1"  # use what's installed; don't rebuild the project unpinned
+        run: ./scripts/demo.sh
+
+  prompts:
+    # A released prompt is never edited in place (OHL-H6): a pull request may add prompt
+    # files and MANIFEST lines, but not change or remove them.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Existing prompts and MANIFEST lines unchanged
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          changed=$(git diff --name-only --diff-filter=MDR "$BASE" HEAD -- 'ohl/prompts/*.md')
+          removed=$(git diff -U0 "$BASE" HEAD -- ohl/prompts/MANIFEST | grep -E '^-[0-9a-f]{64}' || true)
+          if [ -n "$changed$removed" ]; then
+            echo "A released prompt was changed. Add a new version instead (e.g. scan_v2.md)."
+            echo "$changed"; echo "$removed"
+            exit 1
+          fi
+
+  wheel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          version: "0.13.7"
+          python-version: "3.12"
+      - name: Install the wheel in a clean virtualenv and run a replay scan
+        run: ./scripts/wheel_smoke.sh
+
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          version: "0.13.7"
+          python-version: "3.12"
+      - name: Install pip-audit from uv.lock (hashes checked)
+        run: uv sync --locked --only-group audit
+      - name: Known vulnerabilities in the locked runtime dependencies
+        run: |
+          uv export --frozen --no-dev --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/requirements.txt"
+          uv run --no-sync pip-audit --disable-pip -r "$RUNNER_TEMP/requirements.txt"

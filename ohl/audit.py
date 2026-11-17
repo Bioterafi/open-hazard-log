@@ -78,7 +78,11 @@ def verify_rows(rows) -> Verdict:
             return Verdict(False, count, prev, r["seq"], f"expected event {expected_seq} (missing or reordered rows)")
         if r["prev_hash"] != prev:
             return Verdict(False, count, prev, r["seq"], "link to previous event does not match")
-        if _digest(r) != r["hash"]:
+        try:
+            digest = _digest(r)
+        except (TypeError, ValueError):
+            return Verdict(False, count, prev, r["seq"], "a field holds a value that isn't text (row was edited)")
+        if digest != r["hash"]:
             return Verdict(False, count, prev, r["seq"], "contents do not match their hash (row was edited)")
         prev, expected_seq, count = r["hash"], expected_seq + 1, count + 1
     return Verdict(True, count, prev)

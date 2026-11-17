@@ -5,11 +5,10 @@ Rule enforced here, not in the UI: only a CSO can change the log.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
-import sqlite3
 import subprocess
+from hashlib import sha256
 
 from . import audit, risk
 from .db import dumps, now, today, tx
@@ -508,7 +507,7 @@ def issue_version(conn, user: dict, system_id: int, note: str = "") -> int:
         signer = {"email": user["email"], "name": user["name"], "registration": user["registration"]}
         audit.append(conn, actor=user["email"], action="version_issued", system_id=system_id,
                      object_ref=f"v{number}", after={"number": number, "signer": signer, "repo_commit": commit,
-                                                     "snapshot_sha256": hashlib.sha256(dumps(snap).encode()).hexdigest()},
+                                                     "snapshot_sha256": sha256(dumps(snap).encode()).hexdigest()},
                      note=note.strip())
         conn.execute(
             "INSERT INTO issue (system_id, number, issued_at, issued_by, note, repo_commit, chain_head, snapshot)"

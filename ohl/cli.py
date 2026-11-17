@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import hashlib
 import json
+import sqlite3
 import sys
 import tomllib
+from importlib.resources import files
 from pathlib import Path
 
-from . import audit, db, export, importer
+from . import audit, db, export, importer, proposals
 from . import service as S
 
-SEED = Path(__file__).resolve().parent.parent / "seed" / "ohl_self.toml"
+SEED = files("ohl") / "seed" / "ohl_self.toml"  # OHL's own hazard log, shipped inside the package
 
 
 def _conn(args):
@@ -28,7 +31,12 @@ def _user(conn, email: str) -> dict:
 
 def _out(path: str | None, data: str | bytes) -> None:
     if path:
-        Path(path).write_bytes(data if isinstance(data, bytes) else data.encode("utf-8"))
+        if not Path(path).parent.is_dir():
+            sys.exit(f"the folder {Path(path).parent} doesn't exist; create it first")
+        try:
+            Path(path).write_bytes(data if isinstance(data, bytes) else data.encode("utf-8"))
+        except OSError as e:
+            sys.exit(f"couldn't write {path}: {e.strerror or e}")
         print(f"wrote {path}")
     elif isinstance(data, bytes):
         sys.exit("binary output needs --out")
@@ -71,7 +79,7 @@ def cmd_system_configure(args):
     fields = {"sources": sources}
     if args.confirm_no_pid:
         fields["no_pid_confirmed"] = True
-    for k in ("intended_use", "clinical_context"):
+    for k in ("intended_use", "clinical_context", "version"):
         if getattr(args, k) is not None:
             fields[k] = getattr(args, k)
     S.update_system(conn, user, args.system, fields)
@@ -81,7 +89,7 @@ def cmd_system_configure(args):
 def cmd_seed_self(args):
     conn = _conn(args)
     user = _user(conn, args.as_)
-    seed = tomllib.loads(SEED.read_text())
+    seed = tomllib.loads(SEED.read_text(encoding="utf-8"))
     s = seed["system"]
     sid = S.create_system(conn, user, name=s["name"], version=s["version"], intended_use=s["intended_use"],
                           clinical_context=s["clinical_context"], hazard_prefix=s["hazard_prefix"],
@@ -91,10 +99,13 @@ def cmd_seed_self(args):
             ref = S.create_hazard(conn, user, sid, {"title": h["title"], "harm": h.get("harm", ""),
                                                     "causes": "\n".join(h.get("causes", [])),
                                                     "deployer_action": h.get("deployer_action", "")},
-                                  note="seeded from seed/ohl_self.toml", _in_tx=True)
+                                  note="seeded from ohl/seed/ohl_self.toml", _in_tx=True)
             for c in h.get("controls", []):
                 S.create_control(conn, user, sid, {"hazard_refs": [ref], **c}, note="seeded", _in_tx=True)
-    print(f"created system {sid}: {s['name']} with {len(seed['hazard'])} unrated hazards")
+    if args.repo:
+        S.update_system(conn, user, sid, {"sources": {"repo": str(Path(args.repo).expanduser().resolve())}})
+    print(f"created system {sid}: {s['name']} with {len(seed['hazard'])} unrated hazards"
+          + (f"; evidence is checked against {args.repo}" if args.repo else ""))
 
 
 def cmd_import(args):
@@ -123,10 +134,10 @@ def cmd_scan(args):
           f"{len(inputs.tree)} files in tree; {how}.")
     try:
         r = scan.run(conn, user, args.system, client=client, model=args.model, max_proposals=args.max)
-    except scan.ScanError as e:
-        sys.exit(f"Scan failed, nothing stored: {e}")
-    except Exception as e:  # API, network, auth: say what happened, store nothing
-        sys.exit(f"Scan failed, nothing stored: {type(e).__name__}: {e}")
+    except (S.Invalid, S.Forbidden):
+        raise
+    except Exception as e:  # bad output, API, network, auth: say what happened and whether it's recorded
+        sys.exit(proposals.failure_message("Scan", e))
     print(f"Run {r.run_id} ({r.model_used}): {len(r.shown)} proposals for review, "
           f"{r.hidden_no_quote} hidden (no verified quote), {r.over_limit} over the limit.")
     print(f"Lenses: {', '.join(r.lenses_run)}")
@@ -148,7 +159,14 @@ def _user_or_only_cso(conn, email: str | None) -> dict:
 def cmd_check(args):
     from . import checks
     conn = _conn(args)
-    r = checks.run(conn, _user_or_only_cso(conn, args.as_), args.system)
+    user = _user_or_only_cso(conn, args.as_)
+    S.get_system(conn, args.system)  # an unknown system stops here, before any run starts
+    try:
+        r = checks.run(conn, user, args.system)
+    except S.Forbidden:
+        raise
+    except Exception as e:  # anything once the run has started, KeyError included
+        sys.exit(proposals.failure_message("Checks", e, "observations or proposals"))
     print(f"Checks {r.run_id}: {r.evidence_checked} evidence files checked ({r.baselined} seen for the first time), "
           f"{len(r.proposals)} new proposal{'s' if len(r.proposals) != 1 else ''} for review.")
     for line in r.problems:
@@ -178,9 +196,69 @@ def cmd_verify(args):
         rows = json.loads(Path(args.file).read_text())["events"]
         verdict = audit.verify_rows(rows)
     else:
-        verdict = audit.verify(_conn(args))
+        try:
+            conn = db.connect_ro(args.db)  # read-only: verifying a backup never changes it
+            verdict = audit.verify(conn)
+        except FileNotFoundError as e:
+            sys.exit(str(e))
+        except sqlite3.Error as e:
+            print(f"FAILED: {args.db} can't be read as an Open Hazard Log database ({type(e).__name__}: {e})")
+            sys.exit(1)
+        except OSError as e:
+            print(f"FAILED: can't read {args.db}: {e.strerror or e}")
+            sys.exit(1)
     print(verdict)
     sys.exit(0 if verdict.ok else 1)
+
+
+def _stop_on_hangup():
+    """Closing the terminal or shutting down raises SystemExit, so clean-up still runs."""
+    import signal
+
+    def stop(signum, frame):
+        raise SystemExit(f"backup stopped by signal {signum}, nothing written to the backup's name")
+    old = {s: signal.signal(s, stop) for s in (signal.SIGTERM, getattr(signal, "SIGHUP", signal.SIGTERM))}
+    return lambda: [signal.signal(s, h) for s, h in old.items()]
+
+
+def cmd_backup(args):
+    restore = _stop_on_hangup()
+    try:
+        if not Path(args.db).is_file():
+            sys.exit(f"no database at {args.db}")
+        conn = db.connect(args.db, init=False)  # never writes to the database it copies
+        db.backup(conn, args.out)
+    except (FileExistsError, FileNotFoundError) as e:
+        sys.exit(str(e))
+    except KeyboardInterrupt:
+        sys.exit("backup stopped, nothing written to the backup's name")
+    except (OSError, sqlite3.Error) as e:
+        sys.exit(f"backup failed: {type(e).__name__}: {e}")
+    finally:
+        restore()  # the copy is in place now; from here a stop leaves a complete backup
+    try:
+        copy = audit.verify(db.connect_ro(args.out))
+        # The app may have written since the copy was taken, so the copy's head must be in the live chain.
+        in_live = copy.count == 0 or conn.execute("SELECT 1 FROM event WHERE hash = ?", (copy.head,)).fetchone()
+    except (OSError, sqlite3.Error) as e:
+        sys.exit(f"backup written to {args.out} but it couldn't be checked ({type(e).__name__}: {e}); "
+                 f"run: ohl --db {args.out} verify")
+    if not copy.ok or not in_live:
+        sys.exit(f"backup written to {args.out} but it doesn't verify against the database: {copy}")
+    digest = hashlib.sha256(Path(args.out).read_bytes()).hexdigest()
+    print(f"backed up {args.db} to {args.out}: {copy}")
+    print(f"file SHA-256 {digest}. The session secret is left out; a new one is made when the backup is opened.")
+
+
+def cmd_issue(args):
+    conn = _conn(args)
+    user = _user(conn, args.as_)
+    if not args.confirm:
+        sys.exit("Issuing signs this version of the log in your name. Review it first, then add --confirm.")
+    n = S.issue_version(conn, user, args.system, args.note or "")
+    issue = S.get_issue(conn, args.system, n)
+    print(f"issued v{n} of system {args.system}, signed by {user['name']}"
+          + (f", repo commit {issue['repo_commit'][:12]}" if issue.get("repo_commit") else ", no repo commit recorded"))
 
 
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
@@ -235,10 +313,12 @@ def main(argv=None):
                        help="confirm the sources contain no patient-identifiable data")
     sconf.add_argument("--intended-use")
     sconf.add_argument("--clinical-context")
+    sconf.add_argument("--version", help="the system's version, e.g. the release a log is being issued for")
     sconf.add_argument("--as", dest="as_", required=True, help="CSO email")
     sconf.set_defaults(fn=cmd_system_configure)
 
     ss = sub.add_parser("seed-self", help="load OHL's own hazard log (unrated)")
+    ss.add_argument("--repo", help="an Open Hazard Log checkout, so `ohl check` can watch the linked tests")
     ss.add_argument("--as", dest="as_", required=True, help="CSO email")
     ss.set_defaults(fn=cmd_seed_self)
 
@@ -276,6 +356,17 @@ def main(argv=None):
     v = sub.add_parser("verify", help="check the audit hash chain")
     v.add_argument("--file", help="verify an exported audit JSON file instead of the database")
     v.set_defaults(fn=cmd_verify)
+
+    bk = sub.add_parser("backup", help="copy the database safely, while it's in use; the copy is verified")
+    bk.add_argument("out", help="new file to write, e.g. ohl-2026-11-17.db")
+    bk.set_defaults(fn=cmd_backup)
+
+    iv = sub.add_parser("issue", help="issue (sign) a numbered version of a system's hazard log")
+    iv.add_argument("--system", type=int, required=True)
+    iv.add_argument("--note", help="what this version is for, e.g. 'Release 2.4'")
+    iv.add_argument("--confirm", action="store_true", help="confirm you have reviewed the log and approve it")
+    iv.add_argument("--as", dest="as_", required=True, help="CSO email")
+    iv.set_defaults(fn=cmd_issue)
 
     sv = sub.add_parser("serve", help="run the web app")
     sv.add_argument("--host", default="127.0.0.1")

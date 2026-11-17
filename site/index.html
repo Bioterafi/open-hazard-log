@@ -18,144 +18,186 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400&display=swap">
 <style>
 :root {
-  --page: #faf9f5; --line: #e8e6dc; --ink: #141413; --ink-2: #3d3d3a; --faint: #6b6a65; --clay: #c6613f;
+  --page: #faf9f5; --line: #e8e6dc; --line-2: #dedcd1; --ink: #141413; --ink-2: #3d3d3a; --faint: #6b6a65; --clay: #c6613f;
   --serif: "Newsreader", Georgia, serif;
   --sans: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --wrap: 1200px;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--page); color: var(--ink); font: 18px/1.65 var(--sans); -webkit-font-smoothing: antialiased; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 17px/1.65 var(--sans); -webkit-font-smoothing: antialiased; }
 a { color: inherit; text-decoration-color: #c2c0b6; text-underline-offset: 3px; }
 a:hover { text-decoration-color: currentColor; }
 :focus-visible { outline: 2px solid var(--clay); outline-offset: 3px; border-radius: 4px; }
+p { margin: 0 0 16px; }
+p:last-child { margin-bottom: 0; }
+ol, ul { margin: 0; padding: 0; list-style: none; }
 
-.col { max-width: 660px; margin: 0 auto; padding: 0 24px; }
-.wide { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+.wrap { max-width: var(--wrap); margin: 0 auto; padding: 0 48px; }
 
-header { padding: 32px 0 0; }
+/* header */
+header .wrap { display: flex; align-items: center; justify-content: space-between; min-height: 84px; }
 .mark { font-weight: 600; font-size: 17px; letter-spacing: -0.01em; text-decoration: none; }
 .mark span { font-weight: 400; color: var(--faint); }
+.gh { font-size: 15px; color: var(--faint); text-decoration: none; }
+.gh:hover { color: var(--ink); }
 
-h1 { font: 400 clamp(38px, 6vw, 56px)/1.08 var(--serif); letter-spacing: -0.022em; margin: 112px 0 28px; }
-.lede { font-size: 20px; line-height: 1.6; color: var(--ink-2); margin: 0; }
-.src { margin: 28px 0 0; }
-.star { display: inline-flex; align-items: center; gap: 9px; padding: 10px 18px; border-radius: 999px;
+/* hero */
+.hero { padding: 88px 0 0; }
+h1 { font: 400 clamp(40px, 5.4vw, 74px)/1.05 var(--serif); letter-spacing: -0.025em; margin: 0; max-width: 15ch; }
+.hero-body { margin-top: 40px; max-width: 680px; }
+.lede { font-size: 20px; line-height: 1.6; color: var(--ink-2); margin: 0; max-width: 640px; }
+.hero-cta { margin-top: 32px; }
+.star { display: inline-flex; align-items: center; gap: 9px; padding: 12px 20px; border-radius: 999px;
   background: var(--ink); color: var(--page); font: 500 15px/1 var(--sans); text-decoration: none; }
 .star:hover { background: var(--ink-2); }
 .star svg { flex: none; }
-pre { margin: 20px 0 0; padding: 16px 18px; background: #f0eee6; border-radius: 10px; overflow-x: auto;
-  font: 13.5px/1.7 ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink-2); }
 
-figure.wide { margin-top: 88px; margin-bottom: 0; }
-figure img { display: block; width: 100%; height: auto; border-radius: 14px; border: 1px solid var(--line); }
+/* screenshot */
+figure.shot { margin: 72px auto 0; }
+figure.shot img { display: block; width: 100%; height: auto; border-radius: 14px; border: 1px solid var(--line); }
 figcaption { font-size: 14px; color: var(--faint); margin-top: 12px; }
 
-section { margin-top: 104px; }
-h2 { font: 400 30px/1.2 var(--serif); letter-spacing: -0.012em; margin: 0 0 20px; }
-p { margin: 0 0 18px; }
-p:last-child { margin-bottom: 0; }
+/* sections: heading on the left, content on the right */
+section.row { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: 48px;
+  margin-top: 112px; padding-top: 28px; border-top: 1px solid var(--line-2); }
+section.row.stack { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+h2 { font: 400 32px/1.15 var(--serif); letter-spacing: -0.012em; margin: 0; }
+.body { font-size: 18px; min-width: 0; }
+.body > p { max-width: 680px; color: var(--ink-2); }
 
-ol, ul { margin: 0; padding: 0; list-style: none; }
-.steps li { display: grid; grid-template-columns: 28px 1fr; padding: 16px 0; border-top: 1px solid var(--line); }
-.steps li:last-child { border-bottom: 1px solid var(--line); }
-.steps .n { font: 400 18px var(--serif); color: var(--faint); }
-.steps b, .nots b { font-weight: 600; }
-.nots li { padding: 0 0 14px 22px; position: relative; }
-.nots li::before { content: "–"; position: absolute; left: 0; color: var(--faint); }
+/* plain text columns divided by hairlines */
+.cols { display: grid; gap: 0 32px; }
+.cols.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.cols.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cols li { padding: 18px 0 22px; border-top: 1px solid var(--line); font-size: 16px; color: var(--ink-2); }
+.cols li:first-child, .cols.two li:nth-child(2) { border-top: 0; padding-top: 0; }
+.cols.four li { border-top: 0; padding-top: 0; }
+.cols .n { display: block; font: 400 20px var(--serif); color: var(--faint); margin-bottom: 10px; }
+.cols .t { display: block; margin-top: 10px; font-size: 13px; color: var(--faint); }
+.cols b { display: block; color: var(--ink); font-weight: 600; font-size: 17px; margin-bottom: 4px; }
 
-table { width: 100%; border-collapse: collapse; font-size: 15.5px; margin-top: 6px; }
-th, td { text-align: left; vertical-align: top; padding: 11px 16px 11px 0; border-top: 1px solid var(--line); }
+table { width: 100%; border-collapse: collapse; font-size: 15.5px; }
+th, td { text-align: left; vertical-align: top; padding: 11px 16px 11px 0; border-bottom: 1px solid var(--line); }
+tr:first-child th, tr:first-child td { padding-top: 0; }
 th { font-weight: 500; white-space: nowrap; color: var(--faint); width: 1%; }
-tr:last-child th, tr:last-child td { border-bottom: 1px solid var(--line); }
-.fine { font-size: 15px; color: var(--faint); margin-top: 18px; }
+.fine { font-size: 15px; color: var(--faint); margin-top: 18px; max-width: 680px; }
 
-footer { margin: 120px 0 0; padding: 28px 0 48px; border-top: 1px solid var(--line); font-size: 14px; color: var(--faint); }
+pre { margin: 20px 0 0; padding: 18px 20px; background: #f0eee6; border-radius: 10px; overflow-x: auto; max-width: 680px;
+  font: 14px/1.7 ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink-2); }
 
-@media (max-width: 600px) {
-  body { font-size: 17px; }
-  .col, .wide { padding: 0 20px; }
-  h1 { margin-top: 72px; }
+footer { margin-top: 128px; border-top: 1px solid var(--line-2); }
+footer .wrap { display: flex; justify-content: space-between; gap: 24px; padding-top: 28px; padding-bottom: 48px; font-size: 14px; color: var(--faint); flex-wrap: wrap; }
+
+/* narrower screens */
+@media (max-width: 1100px) {
+  .cols.four { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 32px; }
+}
+@media (max-width: 860px) {
+  .wrap { padding: 0 28px; }
+  .hero { padding-top: 56px; }
+  section.row { grid-template-columns: minmax(0, 1fr); gap: 20px; margin-top: 80px; }
+}
+@media (max-width: 560px) {
+  body { font-size: 16.5px; }
+  .wrap { padding: 0 20px; }
   .lede { font-size: 18.5px; }
-  figure.wide { margin-top: 56px; }
-  section { margin-top: 72px; }
-  h2 { font-size: 26px; }
+  figure.shot { margin-top: 48px; }
+  .cols.four, .cols.two { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .cols.four li, .cols.two li:nth-child(2) { border-top: 1px solid var(--line); padding-top: 18px; }
+  .cols li:first-child { border-top: 0; padding-top: 0; }
   th { white-space: normal; width: 34%; }
 }
 </style>
 </head>
 <body>
 
-<header class="col">
-  <a class="mark" href="/">Open Hazard Log <span>by Bioterafi</span></a>
+<header>
+  <div class="wrap">
+    <a class="mark" href="/">Open Hazard Log <span>by Bioterafi</span></a>
+    <a class="gh" href="https://github.com/Bioterafi/open-hazard-log">GitHub</a>
+  </div>
 </header>
 
 <main>
-  <div class="col">
+  <div class="wrap hero">
     <h1>A hazard log that keeps up with the product it describes.</h1>
-    <p class="lede">Open Hazard Log is an open-source tool for Clinical Safety Officers working to DCB0129 and DCB0160. An agent reads your specifications and code and suggests hazards, quoting its sources. Simple checks notice when the evidence behind a control changes. Nothing enters the log until you approve it.</p>
-    <p class="src"><a class="star" href="https://github.com/Bioterafi/open-hazard-log"><svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>Star on GitHub</span></a></p>
+    <div class="hero-body">
+      <p class="lede">Open Hazard Log is an open-source tool for Clinical Safety Officers working to DCB0129 and DCB0160. An agent reads your specifications and code and suggests hazards, quoting its sources. Simple checks notice when the evidence behind a control changes. Nothing enters the log until you approve it.</p>
+      <div class="hero-cta">
+        <a class="star" href="https://github.com/Bioterafi/open-hazard-log"><svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.130-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>Star on GitHub</span></a>
+      </div>
+    </div>
   </div>
 
-  <figure class="wide">
+  <figure class="wrap shot">
     <a href="/dashboard.jpg"><img src="/dashboard.jpg" width="2000" height="1337" alt="The Open Hazard Log dashboard for a demo system called Ward Results Viewer 2.3. It shows headline numbers (5 hazards, 6 proposals waiting, 0 of 10 controls verified), initial and residual 5 by 5 risk matrices with hazard counts in their cells, and a residual-risk breakdown."></a>
     <figcaption>The dashboard for one system. Made-up demo data.</figcaption>
   </figure>
 
-  <div class="col">
-    <section>
+  <div class="wrap">
+    <section class="row">
       <h2>Why</h2>
-      <p>A hazard log is meant to live as long as the system it describes. Most are written for go-live, kept in a spreadsheet, and left behind as the product changes.</p>
-      <p>Controls quietly lose the tests and documents they relied on. The links between a hazard, its causes, its controls and their evidence sit in free text that nobody can check. Hazards passed from a manufacturer to a deploying organisation get lost in email.</p>
+      <div class="body">
+        <p>A hazard log is meant to live as long as the system it describes. Most are written for go-live, kept in a spreadsheet, and left behind as the product changes.</p>
+        <p>Controls quietly lose the tests and documents they relied on. The links between a hazard, its causes, its controls and their evidence sit in free text that nobody can check. Hazards passed from a manufacturer to a deploying organisation get lost in email.</p>
+      </div>
     </section>
 
-    <section>
+    <section class="row stack">
       <h2>How it works</h2>
-      <ol class="steps">
-        <li><span class="n">1</span><span><b>Scan.</b> An agent reads the intended use, specifications and the code you choose, and proposes hazards. Each one quotes its sources, and a proposal with no quote that can be found word for word is never shown.</span></li>
-        <li><span class="n">2</span><span><b>Review.</b> You rate each new hazard before you see the agent's rating, then approve, edit or reject it. Your reasons go into the next scan.</span></li>
-        <li><span class="n">3</span><span><b>Check.</b> With no AI involved, the evidence behind each control is re-hashed and new commits are matched to the code each hazard depends on. Whatever changed comes back to you.</span></li>
-        <li><span class="n">4</span><span><b>Issue.</b> You sign numbered, frozen versions of the log and export them in the NHS hazard log template layout.</span></li>
+      <ol class="cols four">
+        <li><span class="n">1</span><b>Scan</b>An agent reads the intended use, specifications and the code you choose, and proposes hazards. Each one quotes its sources; a proposal with no quote that can be found word for word is never shown.<span class="t">Tested in <a href="https://github.com/Bioterafi/open-hazard-log/blob/main/tests/test_scan.py">test_scan.py</a></span></li>
+        <li><span class="n">2</span><b>Review</b>You rate each new hazard before you see the agent's rating, then approve, edit or reject it. Your reasons go into the next scan.<span class="t">Tested in <a href="https://github.com/Bioterafi/open-hazard-log/blob/main/tests/test_review.py">test_review.py</a></span></li>
+        <li><span class="n">3</span><b>Check</b>With no AI involved, the evidence behind each control is re-hashed and new commits are matched to the code each hazard depends on. Whatever changed comes back to you.<span class="t">Tested in <a href="https://github.com/Bioterafi/open-hazard-log/blob/main/tests/test_checks.py">test_checks.py</a></span></li>
+        <li><span class="n">4</span><b>Issue</b>You sign numbered, frozen versions of the log and export them in the NHS hazard log template layout.</li>
       </ol>
     </section>
 
-    <section>
+    <section class="row">
       <h2>What it won't do</h2>
-      <ul class="nots">
-        <li><b>Change the log without you.</b> The agent and the checks can only make proposals, and the test suite fails if that ever changes. Every change in the log carries a named person and a tamper-evident audit trail.</li>
-        <li><b>Replace your safety process.</b> The scan supplements a hazard workshop. Your Clinical Risk Management Plan and Safety Case Report stay yours.</li>
-        <li><b>Touch patient data.</b> It reads documents and code, and only after you confirm they contain none.</li>
-        <li><b>Live on someone else's server.</b> It runs on your own computer.</li>
+      <ul class="cols two">
+        <li><b>Change the log without you</b>The agent and the checks can only make proposals, and the test suite fails if that ever changes. Every change in the log carries a named person and a tamper-evident audit trail.<span class="t">Tested in <a href="https://github.com/Bioterafi/open-hazard-log/blob/main/tests/test_scan.py">test_scan.py</a>, <a href="https://github.com/Bioterafi/open-hazard-log/blob/main/tests/test_checks.py">test_checks.py</a>, <a href="https://github.com/Bioterafi/open-hazard-log/blob/main/tests/test_core.py">test_core.py</a></span></li>
+        <li><b>Replace your safety process</b>The scan supplements a hazard workshop. Your Clinical Risk Management Plan and Safety Case Report stay yours.</li>
+        <li><b>Touch patient data</b>It reads documents and code, and only after you confirm they contain none.<span class="t">Tested in <a href="https://github.com/Bioterafi/open-hazard-log/blob/main/tests/test_scan.py">test_scan.py</a></span></li>
+        <li><b>Live on someone else's server</b>It runs on your own computer, and answers only requests from that computer, however it is started.<span class="t">Tested in <a href="https://github.com/Bioterafi/open-hazard-log/blob/main/tests/test_web.py">test_web.py</a>, <a href="https://github.com/Bioterafi/open-hazard-log/blob/main/tests/test_local_server.py">test_local_server.py</a></span></li>
       </ul>
     </section>
 
-    <section>
+    <section class="row">
       <h2>Grounded in the standards</h2>
-      <table>
-        <tr><th>DCB0129 3.3.1</th><td>A hazard log maintained for the life of the system</td></tr>
-        <tr><th>DCB0129 3.3.2</th><td>The CSO approves each version: Issue version signs and freezes it</td></tr>
-        <tr><th>DCB0129 4.3.1</th><td>Known and foreseeable hazards identified: the scan proposes, the CSO decides</td></tr>
-        <tr><th>DCB0129 4.4.1</th><td>Risk derived from your own matrix; only the CSO sets ratings</td></tr>
-        <tr><th>DCB0129 6.3</th><td>Controls verified, with their evidence re-checked by hash</td></tr>
-        <tr><th>DCB0129 7.3.4</th><td>An audit trail of every version and change</td></tr>
-        <tr><th>DCB0160 2.5.1</th><td>A list of deployer actions for the deploying organisation's own log</td></tr>
-      </table>
-      <p class="fine">Based on the 2018 versions of both standards, which NHS England is reviewing. The risk matrix and template columns are configuration, so they can follow the revision. Open Hazard Log supports clinical risk management; it doesn't make a product compliant, and it isn't affiliated with or endorsed by NHS England.</p>
+      <div class="body">
+        <table>
+          <tr><th>DCB0129 3.3.1</th><td>A hazard log maintained for the life of the system</td></tr>
+          <tr><th>DCB0129 3.3.2</th><td>The CSO approves each version: Issue version signs and freezes it</td></tr>
+          <tr><th>DCB0129 4.3.1</th><td>Known and foreseeable hazards identified: the scan proposes, the CSO decides</td></tr>
+          <tr><th>DCB0129 4.4.1</th><td>Risk derived from your own matrix; only the CSO sets ratings</td></tr>
+          <tr><th>DCB0129 6.3</th><td>Controls verified, with their evidence re-checked by hash</td></tr>
+          <tr><th>DCB0129 7.3.4</th><td>An audit trail of every version and change</td></tr>
+          <tr><th>DCB0160 2.5.1</th><td>A list of deployer actions for the deploying organisation's own log</td></tr>
+        </table>
+        <p class="fine">Based on the 2018 versions of both standards, which NHS England is reviewing. The risk matrix and template columns are configuration, so they can follow the revision. Open Hazard Log supports clinical risk management; it doesn't make a product compliant, and it isn't affiliated with or endorsed by NHS England.</p>
+      </div>
     </section>
 
-    <section>
-      <h2>Availability</h2>
-      <p>Open Hazard Log is open source under the Apache-2.0 licence. The code, its tests, and Open Hazard Log's own hazard log are at <a href="https://github.com/Bioterafi/open-hazard-log">github.com/Bioterafi/open-hazard-log</a>.</p>
-      <p>To try it with made-up data, without an API key:</p>
+    <section class="row">
+      <h2>Try it</h2>
+      <div class="body">
+        <p>Open Hazard Log is open source under the Apache-2.0 licence. The code, its tests, and Open Hazard Log's own hazard log are at <a href="https://github.com/Bioterafi/open-hazard-log">github.com/Bioterafi/open-hazard-log</a>. To try it with made-up data, without an API key:</p>
 <pre>git clone https://github.com/Bioterafi/open-hazard-log
 cd open-hazard-log
 uv sync
 ./scripts/demo.sh
 uv run ohl --db demo.db serve --as cso@demo.local</pre>
+      </div>
     </section>
   </div>
 </main>
 
-<footer class="col">
-  Open Hazard Log is a <a href="https://bioterafi.xyz">Bioterafi</a> product. <a href="https://github.com/Bioterafi/open-hazard-log">Source on GitHub</a>.
+<footer>
+  <div class="wrap">
+    <span>Open Hazard Log is a <a href="https://bioterafi.xyz">Bioterafi</a> product.</span>
+    <span>Apache-2.0 · <a href="https://github.com/Bioterafi/open-hazard-log">Source on GitHub</a></span>
+  </div>
 </footer>
 
 </body>

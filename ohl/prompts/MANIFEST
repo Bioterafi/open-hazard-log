@@ -1,0 +1,3 @@
+# SHA-256 of each prompt file (sha256sum format). A prompt is never edited in place:
+# a change is a new file and version (scan_v2.md, "scan-v2") plus a new line here.
+9e2ec57d73449398add1652182261a541766da6d14b621950b5c885e335b26a8  scan_v1.md

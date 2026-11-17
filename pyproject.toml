@@ -1,6 +1,6 @@
 [project]
 name = "ohl"
-version = "0.1.0"
+version = "0.1.1"
 description = "Open Hazard Log by Bioterafi: a DCB0129/DCB0160 hazard log where agents propose and the Clinical Safety Officer decides."
 requires-python = ">=3.12"
 license = "Apache-2.0"
@@ -28,6 +28,10 @@ ohl = "ohl.cli:main"
 dev = [
     "httpx2>=2.16.2",
     "pytest>=8",
+    "ruff>=0.17",
+]
+audit = [
+    "pip-audit==2.10.1",  # CI only; locked with hashes in uv.lock like everything else
 ]
 
 [build-system]
@@ -39,3 +43,14 @@ packages = ["ohl"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "I"]
+ignore = ["E731"]  # small lambdas as sort keys are fine
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501", "F811"]  # long assertion lines; fixtures imported from other test files
