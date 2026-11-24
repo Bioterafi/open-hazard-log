@@ -28,7 +28,7 @@ ohl = "ohl.cli:main"
 dev = [
     "httpx2>=2.16.2",
     "pytest>=8",
-    "ruff>=0.17",
+    "ruff>=0.17.6",
 ]
 audit = [
     "pip-audit==2.10.1",  # CI only; locked with hashes in uv.lock like everything else
